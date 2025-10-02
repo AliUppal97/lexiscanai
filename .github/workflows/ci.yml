@@ -1,0 +1,167 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  lint-and-typecheck:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd apps/web && npm ci
+          cd ../api && npm ci
+          cd ../../packages/shared-types && npm ci
+
+      - name: Lint
+        run: |
+          npm run lint
+          cd apps/web && npm run lint
+          cd ../api && npm run lint
+
+      - name: Type check
+        run: |
+          npm run typecheck
+          cd apps/web && npm run typecheck
+          cd ../api && npm run typecheck
+
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lexiscan_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd apps/api && npm ci
+
+      - name: Run database migrations
+        run: |
+          cd apps/api
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lexiscan_test
+
+      - name: Run tests
+        run: |
+          cd apps/api
+          npm run test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lexiscan_test
+
+  test-web:
+    name: Test Web App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd apps/web && npm ci
+
+      - name: Run tests
+        run: |
+          cd apps/web
+          npm run test
+
+  test-services:
+    name: Test Services
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd services/ai-worker && pip install -r requirements.txt
+          cd ../pdf-generator && pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          cd services/ai-worker && python -m pytest
+          cd ../pdf-generator && python -m pytest
+
+  build:
+    name: Build Applications
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test-api, test-web, test-services]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Build web app
+        run: |
+          cd apps/web
+          npm ci
+          npm run build
+
+      - name: Build API
+        run: |
+          cd apps/api
+          npm ci
+          npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            apps/web/.next/
+            apps/api/dist/

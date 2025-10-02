@@ -1,0 +1,460 @@
+// LexiScanAI Enterprise Authentication & Authorization Schema
+// Designed for multi-tenant SaaS with world-class security practices
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
+// Tenant: Multi-tenant SaaS isolation
+// Using UUID for external-facing IDs to prevent enumeration attacks
+model Tenant {
+  id          String   @id @default(cuid()) // External-facing ID
+  internalId  Int      @unique @default(autoincrement()) // Internal ID for RLS performance
+  name        String
+  slug        String   @unique // URL-friendly identifier
+  domain      String?  @unique // Custom domain for enterprise customers
+  logo        String?  // Logo URL
+  settings    Json?    // Tenant-specific configuration
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users           User[]
+  roles           Role[]
+  permissions     Permission[]
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  documents       Document[]
+  reviews         Review[]
+  billing         Billing[]
+  embeddings      Embedding[]
+  mfaDevices      MfaDevice[]
+  ssoProviders    SsoProvider[]
+  invitations     Invitation[]
+
+  @@map("tenants")
+  @@index([slug])
+  @@index([domain])
+  @@index([isActive, isDeleted])
+}
+
+// User: Core user entity with tenant isolation
+// Email uniqueness per tenant (not globally) for multi-tenant support
+model User {
+  id                String   @id @default(cuid())
+  internalId        Int      @unique @default(autoincrement())
+  email             String
+  passwordHash      String?  // Nullable for SSO-only users
+  firstName         String?
+  lastName          String?
+  avatar            String?
+  phone             String?
+  timezone          String   @default("UTC")
+  locale            String   @default("en-US")
+  isActive          Boolean  @default(true)
+  isEmailVerified   Boolean  @default(false)
+  emailVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+  isDeleted         Boolean  @default(false)
+  deletedAt         DateTime?
+  tenantId          String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles         UserRole[]
+  sessions          Session[]
+  auditLogs         AuditLog[]
+  documents         Document[]
+  reviews           Review[]
+  billing           Billing[]
+  mfaDevices        MfaDevice[]
+  invitations       Invitation[]
+  createdInvitations Invitation[] @relation("InvitationCreatedBy")
+
+  @@unique([email, tenantId]) // Email unique per tenant
+  @@map("users")
+  @@index([tenantId, email])
+  @@index([tenantId, isActive])
+  @@index([lastLoginAt])
+}
+
+// ============================================================================
+// RBAC SYSTEM
+// ============================================================================
+
+// Role: Flexible role system with tenant isolation
+model Role {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Admin", "Lawyer", "Paralegal", "Viewer"
+  description String?
+  isSystem    Boolean  @default(false) // System roles vs custom roles
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles     UserRole[]
+  rolePermissions RolePermission[]
+  invitations   Invitation[]
+
+  @@unique([name, tenantId]) // Role name unique per tenant
+  @@map("roles")
+  @@index([tenantId, isSystem])
+}
+
+// Permission: Granular permissions system
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "documents.read", "users.create", "billing.manage"
+  resource    String   // e.g., "documents", "users", "billing"
+  action      String   // e.g., "read", "create", "update", "delete", "manage"
+  description String?
+  isSystem    Boolean  @default(false)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions  RolePermission[]
+
+  @@unique([name, tenantId]) // Permission name unique per tenant
+  @@map("permissions")
+  @@index([tenantId, resource, action])
+}
+
+// UserRole: Many-to-many relationship between users and roles
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  assignedBy String? // User who assigned this role
+  assignedAt DateTime @default(now())
+  expiresAt DateTime? // Optional role expiration
+  tenantId  String
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId]) // User can't have same role twice
+  @@map("user_roles")
+  @@index([tenantId, userId])
+  @@index([expiresAt])
+}
+
+// RolePermission: Many-to-many relationship between roles and permissions
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+  tenantId     String
+
+  // Relations
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId]) // Role can't have same permission twice
+  @@map("role_permissions")
+  @@index([tenantId, roleId])
+}
+
+// ============================================================================
+// AUTHENTICATION & SESSIONS
+// ============================================================================
+
+// Session: Secure session management with refresh tokens
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  tenantId      String
+  refreshToken  String    @unique // Hashed refresh token
+  refreshTokenHash String // Double-hashed for extra security
+  deviceInfo    Json?     // Device fingerprint, IP, user agent
+  ipAddress     String?
+  userAgent     String?
+  expiresAt     DateTime
+  lastUsedAt    DateTime  @default(now())
+  isActive      Boolean   @default(true)
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@index([userId, isActive])
+  @@index([refreshTokenHash])
+  @@index([expiresAt])
+  @@index([tenantId, userId])
+}
+
+// MfaDevice: Multi-factor authentication devices
+model MfaDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  tenantId    String
+  type        MfaType
+  name        String   // User-friendly device name
+  secret      String   // Encrypted TOTP secret or device identifier
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("mfa_devices")
+  @@index([userId, type])
+  @@index([tenantId, userId])
+}
+
+// SsoProvider: SSO provider configuration per tenant
+model SsoProvider {
+  id          String   @id @default(cuid())
+  tenantId    String
+  provider    SsoType  // GOOGLE, MICROSOFT, SAML, etc.
+  name        String   // Display name
+  config      Json     // Provider-specific configuration (client ID, secret, etc.)
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider]) // One provider per type per tenant
+  @@map("sso_providers")
+  @@index([tenantId, isActive])
+}
+
+// Invitation: User invitation system
+model Invitation {
+  id          String        @id @default(cuid())
+  email       String
+  roleId      String
+  tenantId    String
+  invitedBy   String
+  token       String        @unique // Invitation token
+  status      InviteStatus  @default(PENDING)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role        Role          @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  invitedByUser User        @relation("InvitationCreatedBy", fields: [invitedBy], references: [id])
+  invitedUser   User?       @relation(fields: [email, tenantId], references: [email, tenantId])
+
+  @@unique([email, tenantId]) // One invitation per email per tenant
+  @@map("invitations")
+  @@index([token])
+  @@index([expiresAt])
+  @@index([tenantId, status])
+}
+
+// ============================================================================
+// AUDIT & COMPLIANCE
+// ============================================================================
+
+// AuditLog: Comprehensive audit trail for compliance
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String?  // Null for system actions
+  action      String   // e.g., "user.login", "document.create", "role.assign"
+  resource    String   // Resource type: "user", "document", "role"
+  resourceId  String?  // ID of the affected resource
+  details     Json?    // Additional context and changes
+  ipAddress   String?
+  userAgent   String?
+  sessionId   String?  // Link to session if available
+  createdAt   DateTime @default(now())
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([resource, resourceId])
+}
+
+// ============================================================================
+// BUSINESS ENTITIES (Existing)
+// ============================================================================
+
+model Document {
+  id          String        @id @default(cuid())
+  title       String
+  content     String?
+  filePath    String?
+  fileSize    Int?
+  mimeType    String?
+  status      DocumentStatus @default(UPLOADED)
+  uploadedBy  String
+  tenantId    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  reviews     Review[]
+  embeddings  Embedding[]
+
+  @@map("documents")
+  @@index([tenantId, uploadedBy])
+  @@index([tenantId, status])
+}
+
+model Review {
+  id         String     @id @default(cuid())
+  documentId String
+  userId     String
+  tenantId   String
+  status     ReviewStatus @default(PENDING)
+  score      Int?
+  feedback   String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  // Relations
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document   Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+  @@index([tenantId, documentId])
+  @@index([tenantId, userId])
+}
+
+model Billing {
+  id          String        @id @default(cuid())
+  userId      String
+  tenantId    String
+  plan        BillingPlan    @default(FREE)
+  status      BillingStatus @default(ACTIVE)
+  amount      Decimal       @db.Decimal(10, 2)
+  currency    String        @default("USD")
+  periodStart DateTime
+  periodEnd   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("billing")
+  @@index([tenantId, status])
+}
+
+model Embedding {
+  id         String   @id @default(cuid())
+  documentId String
+  tenantId   String
+  chunkIndex Int
+  chunkText  String
+  embedding  Float[]  // pgvector extension
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("embeddings")
+  @@index([tenantId, documentId])
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum MfaType {
+  TOTP    // Time-based One-Time Password
+  SMS     // SMS-based codes
+  EMAIL   // Email-based codes
+  BACKUP  // Backup codes
+}
+
+enum SsoType {
+  GOOGLE
+  MICROSOFT
+  SAML
+  OAUTH2
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum SystemRole {
+  SUPER_ADMIN  // System-wide admin
+  TENANT_ADMIN // Tenant admin
+  LAWYER       // Legal professional
+  PARALEGAL    // Legal support
+  VIEWER       // Read-only access
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum BillingPlan {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+enum BillingStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}

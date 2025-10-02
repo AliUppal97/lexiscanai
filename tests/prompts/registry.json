@@ -1,0 +1,79 @@
+{
+  "version": "1.0.0",
+  "prompts": {
+    "document_analysis": {
+      "v1": {
+        "model": "gpt-4",
+        "intent": "Analyze legal documents for risk assessment",
+        "template": "Analyze the following document and identify:\n1. Document type\n2. Key clauses\n3. Risk level (LOW/MEDIUM/HIGH)\n4. Missing clauses\n5. Recommendations\n\nDocument: {document_content}",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "document_type": {"type": "string"},
+            "key_clauses": {"type": "array", "items": {"type": "string"}},
+            "risk_level": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+            "missing_clauses": {"type": "array", "items": {"type": "string"}},
+            "recommendations": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["document_type", "risk_level", "recommendations"]
+        },
+        "created_at": "2024-01-01T00:00:00Z",
+        "created_by": "system"
+      }
+    },
+    "contract_review": {
+      "v1": {
+        "model": "gpt-4",
+        "intent": "Review contracts for legal compliance",
+        "template": "Review this contract for:\n1. Legal compliance issues\n2. Unfair terms\n3. Missing protections\n4. Risk assessment\n\nContract: {contract_content}",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "compliance_issues": {"type": "array", "items": {"type": "string"}},
+            "unfair_terms": {"type": "array", "items": {"type": "string"}},
+            "missing_protections": {"type": "array", "items": {"type": "string"}},
+            "risk_score": {"type": "number", "minimum": 0, "maximum": 100},
+            "recommendations": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["risk_score", "recommendations"]
+        },
+        "created_at": "2024-01-01T00:00:00Z",
+        "created_by": "system"
+      }
+    }
+  },
+  "golden_datasets": {
+    "nda_samples": {
+      "description": "Sample NDAs for testing prompt consistency",
+      "version": "1.0.0",
+      "samples": [
+        {
+          "id": "nda_001",
+          "document_type": "NDA",
+          "expected_risk_level": "MEDIUM",
+          "expected_missing_clauses": ["termination_clause", "jurisdiction"],
+          "file_path": "golden/nda_samples/nda_001.txt"
+        }
+      ]
+    },
+    "employment_contracts": {
+      "description": "Sample employment contracts for testing",
+      "version": "1.0.0",
+      "samples": [
+        {
+          "id": "emp_001",
+          "document_type": "Employment Contract",
+          "expected_risk_level": "LOW",
+          "expected_missing_clauses": [],
+          "file_path": "golden/employment_contracts/emp_001.txt"
+        }
+      ]
+    }
+  },
+  "evaluation_metrics": {
+    "precision_threshold": 0.85,
+    "recall_threshold": 0.80,
+    "hallucination_threshold": 0.05,
+    "consistency_threshold": 0.90
+  }
+}

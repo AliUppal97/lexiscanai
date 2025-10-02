@@ -1,0 +1,39 @@
+{
+  "name": "@lexiscan/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types for LexiScan applications",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "jest"
+  },
+  "keywords": [
+    "typescript",
+    "types",
+    "lexiscan",
+    "shared"
+  ],
+  "author": "LexiScan Team",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "@types/node": "^20.8.10",
+    "eslint": "^8.53.0",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.8",
+    "ts-jest": "^29.1.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
