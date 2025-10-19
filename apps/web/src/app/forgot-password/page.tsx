@@ -1,8 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Header } from "@/components/layout/header"
-import { Footer } from "@/components/layout/footer"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -63,149 +61,147 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-between mb-8">
-            <Link 
-              href="/login" 
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to login
-            </Link>
-            <Link href="/" className="flex items-center gap-2">
-              <FileText className="h-8 w-8 text-blue-600" />
-              <span className="text-xl font-bold text-gray-900">LexiScan AI</span>
-            </Link>
-          </div>
-
-          <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
-            <Card className="w-full max-w-md">
-              <CardContent className="pt-6">
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                    <Mail className="h-8 w-8 text-green-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Check your email</h2>
-                    <p className="text-gray-600 mt-2">
-                      We've sent a password reset link to <strong>{form.getValues("email")}</strong>
-                    </p>
-                    <p className="text-sm text-gray-500 mt-4">
-                      Didn't receive the email? Check your spam folder or{" "}
-                      <button
-                        onClick={() => setSuccess(false)}
-                        className="text-blue-600 hover:text-blue-500 font-medium"
-                      >
-                        try again
-                      </button>
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <Header />
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex flex-col">
+        {/* Minimal header */}
+        <div className="flex items-center justify-between p-6">
           <Link 
             href="/login" 
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to login
+            <span className="text-sm font-medium">Back to login</span>
           </Link>
           <Link href="/" className="flex items-center gap-2">
-            <FileText className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">LexiScan AI</span>
+            <FileText className="h-6 w-6 text-blue-600" />
+            <span className="text-lg font-bold text-gray-900">LexiScan AI</span>
           </Link>
         </div>
 
-        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
-          <Card className="w-full max-w-md">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-bold text-center">Forgot your password?</CardTitle>
-              <CardDescription className="text-center">
-                Enter your email and we'll send you a link to reset your password
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  {error && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <FormField
-                    control={form.control}
-                    name="tenantSlug"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Organization</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="your-organization"
-                            {...field}
-                            disabled={isLoading}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            placeholder="you@company.com"
-                            {...field}
-                            disabled={isLoading}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Sending..." : "Send reset link"}
-                  </Button>
-                </form>
-              </Form>
-
-              <div className="mt-6 text-center">
-                <p className="text-sm text-gray-600">
-                  Remember your password?{" "}
-                  <Link
-                    href="/login"
-                    className="text-blue-600 hover:text-blue-500 font-medium transition-colors"
-                  >
-                    Sign in
-                  </Link>
-                </p>
+        {/* Centered success message */}
+        <div className="flex-1 flex items-center justify-center px-6 pb-6">
+          <Card className="w-full max-w-md shadow-xl border-0">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                  <Mail className="h-8 w-8 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Check your email</h2>
+                  <p className="text-gray-600 mt-2">
+                    We've sent a password reset link to <strong>{form.getValues("email")}</strong>
+                  </p>
+                  <p className="text-sm text-gray-500 mt-4">
+                    Didn't receive the email? Check your spam folder or{" "}
+                    <button
+                      onClick={() => setSuccess(false)}
+                      className="text-blue-600 hover:text-blue-500 font-medium"
+                    >
+                      try again
+                    </button>
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
-      <Footer />
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col">
+      {/* Minimal header with just branding and back link */}
+      <div className="flex items-center justify-between p-6">
+        <Link 
+          href="/login" 
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm font-medium">Back to login</span>
+        </Link>
+        <Link href="/" className="flex items-center gap-2">
+          <FileText className="h-6 w-6 text-blue-600" />
+          <span className="text-lg font-bold text-gray-900">LexiScan AI</span>
+        </Link>
+      </div>
+
+      {/* Centered form */}
+      <div className="flex-1 flex items-center justify-center px-6 pb-6">
+        <Card className="w-full max-w-md shadow-xl border-0">
+          <CardHeader className="space-y-1 pb-6">
+            <CardTitle className="text-2xl font-bold text-center">Forgot your password?</CardTitle>
+            <CardDescription className="text-center text-gray-600">
+              Enter your email and we'll send you a link to reset your password
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="tenantSlug"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Organization</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="your-organization"
+                          {...field}
+                          disabled={isLoading}
+                          className="h-11"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="you@company.com"
+                          {...field}
+                          disabled={isLoading}
+                          className="h-11"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                  {isLoading ? "Sending..." : "Send reset link"}
+                </Button>
+              </form>
+            </Form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                Remember your password?{" "}
+                <Link
+                  href="/login"
+                  className="text-blue-600 hover:text-blue-500 font-medium transition-colors"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
