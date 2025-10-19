@@ -87,17 +87,24 @@ Run with: `node generate-favicons.js`
 
 ## Favicon Design Details
 
+### Premium Design Philosophy
+Inspired by world-class apps like WhatsApp, GitHub, and Slack, this favicon follows the principles of:
+- **Simplicity**: Clean, minimal design that's instantly recognizable
+- **Bold Typography**: Strong "L" letter representing LexiScan
+- **Premium Colors**: Deep blue to purple gradient for trust and innovation
+- **Scalability**: Works perfectly at 16x16, 32x32, and larger sizes
+
 ### Color Scheme
-- Primary Blue: `#3B82F6`
-- Primary Purple: `#8B5CF6`
-- Accent Green: `#10B981` (scanning effect)
-- Accent Gold: `#F59E0B` (AI sparkles)
+- Primary Blue: `#1E40AF` (deep, trustworthy blue)
+- Primary Purple: `#7C3AED` (innovative purple)
+- Accent Gold: `#FCD34D` (AI intelligence indicator)
+- White: `#FFFFFF` (clean contrast)
 
 ### Design Elements
-1. **Document Icon** - Represents document analysis
-2. **Scanning Lines** - Green lines showing AI scanning
-3. **Neural Network Dots** - Gold dots representing AI intelligence
-4. **Gradient Background** - Modern blue-to-purple gradient
+1. **Bold "L" Letter** - Instantly recognizable brand identifier
+2. **Rounded Square** - Modern, premium feel like top-tier apps
+3. **Gradient Background** - Professional blue-to-purple gradient
+4. **AI Accent Dot** - Subtle gold dot representing AI capabilities
 
 ### Browser Support
 - ✅ Modern browsers (Chrome, Firefox, Safari, Edge) - SVG favicon
