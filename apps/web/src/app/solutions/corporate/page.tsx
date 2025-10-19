@@ -441,7 +441,7 @@ export default function CorporatePage() {
                     <Play className="h-4 w-4 mr-2" />
                     Watch Demo
                   </Button>
-                  <Button size="lg" variant="outline" className="text-white border-white hover:bg-white hover:text-blue-600">
+                  <Button size="lg" variant="outline" className="!bg-transparent !text-white !border-white hover:!bg-white hover:!text-gray-900">
                     <MessageCircle className="h-4 w-4 mr-2" />
                     Talk to Sales
                   </Button>
