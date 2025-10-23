@@ -418,7 +418,7 @@ export default function GovernmentSolutionsPage() {
                   </Button>
                 </Link>
                 <Link href="/case-studies">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     <Award className="mr-2 h-4 w-4" />
                     View Government Case Studies
                   </Button>
@@ -840,11 +840,11 @@ export default function GovernmentSolutionsPage() {
                   </Button>
                 </Link>
                 <Link href="/case-studies">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     View Government Case Studies
                   </Button>
                 </Link>
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                   <BookOpen className="mr-2 h-4 w-4" />
                   Download Government Brochure
                 </Button>
