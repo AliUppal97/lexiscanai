@@ -37,7 +37,8 @@ import {
   BookOpen,
   GraduationCap,
   Target,
-  Sparkles
+  Sparkles,
+  Download
 } from "lucide-react"
 
 export const metadata: Metadata = {
@@ -53,42 +54,66 @@ const certifications = [
     description: "Federal Risk and Authorization Management Program certified",
     icon: ShieldCheck,
     status: "Active",
-    color: "blue"
+    bgColor: "bg-blue-100",
+    textColor: "text-blue-600",
+    badgeBg: "bg-blue-100",
+    badgeText: "text-blue-700",
+    borderColor: "border-blue-200"
   },
   {
     name: "FISMA Compliant",
     description: "Federal Information Security Management Act standards met",
     icon: Shield,
     status: "Certified",
-    color: "green"
+    bgColor: "bg-green-100",
+    textColor: "text-green-600",
+    badgeBg: "bg-green-100",
+    badgeText: "text-green-700",
+    borderColor: "border-green-200"
   },
   {
     name: "StateRAMP Ready",
     description: "State-level risk and authorization program compliant",
     icon: Flag,
     status: "Authorized",
-    color: "purple"
+    bgColor: "bg-purple-100",
+    textColor: "text-purple-600",
+    badgeBg: "bg-purple-100",
+    badgeText: "text-purple-700",
+    borderColor: "border-purple-200"
   },
   {
     name: "CJIS Compliant",
     description: "Criminal Justice Information Services Security Policy adherent",
     icon: Scale,
     status: "Certified",
-    color: "red"
+    bgColor: "bg-red-100",
+    textColor: "text-red-600",
+    badgeBg: "bg-red-100",
+    badgeText: "text-red-700",
+    borderColor: "border-red-200"
   },
   {
     name: "Section 508",
     description: "Accessibility standards for federal technology",
     icon: UserCheck,
     status: "Compliant",
-    color: "orange"
+    bgColor: "bg-orange-100",
+    textColor: "text-orange-600",
+    badgeBg: "bg-orange-100",
+    badgeText: "text-orange-700",
+    borderColor: "border-orange-200"
   },
   {
     name: "IL4/IL5 Ready",
     description: "Impact Level 4 & 5 DoD cloud security requirements",
     icon: Lock,
     status: "In Progress",
-    color: "indigo"
+    bgColor: "bg-indigo-100",
+    textColor: "text-indigo-600",
+    badgeBg: "bg-indigo-100",
+    badgeText: "text-indigo-700",
+    borderColor: "border-indigo-200"
   }
 ]
 
@@ -332,28 +357,32 @@ const benefits = [
     stat: "$12M+",
     description: "Total cost savings realized by government clients annually",
     icon: DollarSign,
-    color: "green"
+    bgColor: "bg-green-100",
+    textColor: "text-green-600"
   },
   {
     title: "Faster Processing",
     stat: "70%",
     description: "Average reduction in document processing time across agencies",
     icon: Clock,
-    color: "blue"
+    bgColor: "bg-blue-100",
+    textColor: "text-blue-600"
   },
   {
     title: "Enhanced Accuracy",
     stat: "98.5%",
     description: "AI-powered analysis accuracy for compliance and risk detection",
     icon: Target,
-    color: "purple"
+    bgColor: "bg-purple-100",
+    textColor: "text-purple-600"
   },
   {
     title: "Improved Transparency",
     stat: "100%",
     description: "Complete audit trails and accountability for all operations",
     icon: Eye,
-    color: "orange"
+    bgColor: "bg-orange-100",
+    textColor: "text-orange-600"
   }
 ]
 
@@ -442,16 +471,16 @@ export default function GovernmentSolutionsPage() {
               {certifications.map((cert) => {
                 const CertIcon = cert.icon
                 return (
-                  <Card key={cert.name} className={`border-2 border-${cert.color}-200 hover:shadow-lg transition-shadow`}>
+                  <Card key={cert.name} className={`border-2 ${cert.borderColor} hover:shadow-lg transition-shadow`}>
                     <CardContent className="pt-6">
                       <div className="flex items-start gap-4 mb-4">
-                        <div className={`h-12 w-12 rounded-lg bg-${cert.color}-100 flex items-center justify-center flex-shrink-0`}>
-                          <CertIcon className={`h-6 w-6 text-${cert.color}-600`} />
+                        <div className={`h-12 w-12 rounded-lg ${cert.bgColor} flex items-center justify-center flex-shrink-0`}>
+                          <CertIcon className={`h-6 w-6 ${cert.textColor}`} />
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <h3 className="font-bold text-gray-900">{cert.name}</h3>
-                            <Badge variant="secondary" className={`bg-${cert.color}-100 text-${cert.color}-700 border-none`}>
+                            <Badge variant="secondary" className={`${cert.badgeBg} ${cert.badgeText} border-none`}>
                               {cert.status}
                             </Badge>
                           </div>
@@ -767,10 +796,10 @@ export default function GovernmentSolutionsPage() {
                 return (
                   <Card key={benefit.title} className="border-none shadow-lg text-center">
                     <CardContent className="pt-6">
-                      <div className={`h-16 w-16 rounded-full bg-${benefit.color}-100 flex items-center justify-center mx-auto mb-4`}>
-                        <BenefitIcon className={`h-8 w-8 text-${benefit.color}-600`} />
+                      <div className={`h-16 w-16 rounded-full ${benefit.bgColor} flex items-center justify-center mx-auto mb-4`}>
+                        <BenefitIcon className={`h-8 w-8 ${benefit.textColor}`} />
                       </div>
-                      <div className={`text-4xl font-bold text-${benefit.color}-600 mb-2`}>
+                      <div className={`text-4xl font-bold ${benefit.textColor} mb-2`}>
                         {benefit.stat}
                       </div>
                       <h3 className="font-bold text-gray-900 mb-2">
