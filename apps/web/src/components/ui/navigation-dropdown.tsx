@@ -35,15 +35,17 @@ export function NavigationDropdown({
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div className={cn("relative", className)}>
+    <div 
+      className={cn("relative", className)}
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+    >
       <button
         type="button"
         className={cn(
           "flex items-center gap-x-1 text-sm font-semibold leading-6 text-gray-900 hover:text-blue-600 transition-colors whitespace-nowrap",
           triggerClassName
         )}
-        onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={() => setIsOpen(false)}
         onClick={() => setIsOpen(!isOpen)}
       >
         {label}
@@ -53,13 +55,12 @@ export function NavigationDropdown({
       {isOpen && (
         <div
           className={cn(
-            "absolute left-1/2 -translate-x-1/2 top-full z-50 mt-3 w-screen max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-gray-900/5 border border-gray-100",
+            "absolute left-1/2 -translate-x-1/2 top-full z-50 pt-3 w-screen max-w-2xl",
             dropdownClassName
           )}
-          onMouseEnter={() => setIsOpen(true)}
-          onMouseLeave={() => setIsOpen(false)}
         >
-          <div className="p-6">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-gray-900/5 border border-gray-100">
+            <div className="p-6">
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Industry Solutions</h3>
               <p className="text-sm text-gray-600">Tailored AI-powered document analysis for your industry</p>
@@ -102,6 +103,7 @@ export function NavigationDropdown({
                 View all solutions
                 <ArrowRight className="h-4 w-4" />
               </Link>
+            </div>
             </div>
           </div>
         </div>
