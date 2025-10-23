@@ -17,13 +17,8 @@ import { cn } from "@/lib/utils"
 const navigation = [
   { name: "Features", href: "/features" },
   { name: "Pricing", href: "/pricing" },
-  { name: "API", href: "/api" },
-  { name: "Integrations", href: "/integrations" },
-  { name: "About", href: "/about" },
-  { name: "Blog", href: "/blog" },
-  { name: "Help", href: "/help" },
   { name: "Security", href: "/security" },
-  { name: "Compliance", href: "/compliance" },
+  { name: "Company", href: "/about" },
 ]
 
 const solutions: DropdownItem[] = [
@@ -85,6 +80,57 @@ const solutions: DropdownItem[] = [
   },
 ]
 
+const resources: DropdownItem[] = [
+  {
+    name: "Documentation",
+    description: "API docs and integration guides",
+    href: "/docs",
+    icon: "📚",
+    category: "Developers",
+    popular: true
+  },
+  {
+    name: "API Reference",
+    description: "RESTful API documentation",
+    href: "/api",
+    icon: "🔌",
+    category: "Developers",
+    popular: true
+  },
+  {
+    name: "Integrations",
+    description: "Connect with your favorite tools",
+    href: "/integrations",
+    icon: "🔗",
+    category: "Platform",
+    popular: true
+  },
+  {
+    name: "Help Center",
+    description: "Get support and find answers",
+    href: "/help",
+    icon: "💬",
+    category: "Support",
+    popular: false
+  },
+  {
+    name: "Blog",
+    description: "Latest news and insights",
+    href: "/blog",
+    icon: "📝",
+    category: "Content",
+    popular: false
+  },
+  {
+    name: "Case Studies",
+    description: "Customer success stories",
+    href: "/case-studies",
+    icon: "📊",
+    category: "Content",
+    popular: false
+  },
+]
+
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -133,6 +179,13 @@ export function Header() {
             label="Solutions"
             items={solutions}
             viewAllHref="/solutions"
+          />
+          
+          {/* Resources Dropdown */}
+          <NavigationDropdown
+            label="Resources"
+            items={resources}
+            viewAllHref="/resources"
           />
         </div>
         
@@ -193,6 +246,12 @@ export function Header() {
                   <MobileDropdown
                     label="Solutions"
                     items={solutions}
+                  />
+                  
+                  {/* Mobile Resources Dropdown */}
+                  <MobileDropdown
+                    label="Resources"
+                    items={resources}
                   />
                 </div>
                 <div className="py-6 space-y-2">
