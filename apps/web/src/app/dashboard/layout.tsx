@@ -139,24 +139,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className="relative z-10 flex-shrink-0 flex h-16 bg-white shadow">
           <button
             type="button"
-            className="px-4 border-r border-gray-200 text-gray-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 md:hidden"
+            className="px-4 border-r border-gray-200 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 md:hidden transition-colors"
             onClick={() => setSidebarOpen(true)}
           >
+            <span className="sr-only">Open sidebar</span>
             <Menu className="h-6 w-6" />
           </button>
-          <div className="flex-1 px-4 flex justify-between">
-            <div className="flex-1 flex">
-              <form className="w-full flex md:ml-0" action="#" method="GET">
+          <div className="flex-1 px-4 flex items-center justify-between gap-x-4">
+            {/* Search - Flexible width with max constraint */}
+            <div className="flex-1 max-w-2xl">
+              <form className="w-full" action="#" method="GET">
                 <label htmlFor="search-field" className="sr-only">
                   Search
                 </label>
-                <div className="relative w-full text-gray-400 focus-within:text-gray-600">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
+                <div className="relative text-gray-400 focus-within:text-gray-600">
+                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none pl-3">
                     <Search className="h-5 w-5" />
                   </div>
                   <Input
                     id="search-field"
-                    className="block w-full h-full pl-8 pr-3 py-2 border-transparent text-gray-900 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-0 focus:border-transparent"
+                    className="w-full pl-10 pr-3 py-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Search documents, contracts..."
                     type="search"
                     name="search"
@@ -164,11 +166,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </div>
               </form>
             </div>
-            <div className="ml-4 flex items-center md:ml-6">
+            
+            {/* Right side actions - Fixed width */}
+            <div className="flex items-center gap-x-2 flex-shrink-0">
               {/* Notifications */}
               <Button variant="ghost" size="sm" className="relative">
+                <span className="sr-only">View notifications</span>
                 <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 border-2 border-white">
                   3
                 </Badge>
               </Button>
@@ -176,40 +181,40 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               {/* Profile dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center space-x-3 px-3">
-                    <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
+                  <Button variant="ghost" className="flex items-center gap-x-2 px-2 sm:px-3">
+                    <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
                       <User className="h-4 w-4 text-white" />
                     </div>
-                    <div className="hidden md:block text-left">
-                      <p className="text-sm font-medium text-gray-700">John Doe</p>
-                      <p className="text-xs text-gray-500">john@company.com</p>
+                    <div className="hidden lg:block text-left min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">John Doe</p>
+                      <p className="text-xs text-gray-500 truncate">john@company.com</p>
                     </div>
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                    <ChevronDown className="hidden sm:block h-4 w-4 text-gray-400 flex-shrink-0" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/profile" className="flex items-center">
+                    <Link href="/dashboard/profile" className="flex items-center cursor-pointer">
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/settings" className="flex items-center">
+                    <Link href="/dashboard/settings" className="flex items-center cursor-pointer">
                       <Settings className="mr-2 h-4 w-4" />
                       Settings
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/billing" className="flex items-center">
+                    <Link href="/dashboard/billing" className="flex items-center cursor-pointer">
                       <CreditCard className="mr-2 h-4 w-4" />
                       Billing
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-red-600">
+                  <DropdownMenuItem className="text-red-600 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
                   </DropdownMenuItem>
@@ -250,13 +255,13 @@ function SidebarContent() {
         
         {/* Organization info */}
         <div className="mt-6 px-4">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 bg-gray-200 rounded-lg flex items-center justify-center">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="h-10 w-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
               <span className="text-sm font-medium text-gray-600">AC</span>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Acme Corp</p>
-              <p className="text-xs text-gray-500">acme-corp.lexiscan.ai</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-900 truncate">Acme Corp</p>
+              <p className="text-xs text-gray-500 truncate">acme-corp.lexiscan.ai</p>
             </div>
           </div>
         </div>

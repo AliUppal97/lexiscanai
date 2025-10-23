@@ -24,7 +24,7 @@ const navigation = {
     { name: "Case Studies", href: "/case-studies" },
   ],
   company: [
-    { name: "About", href: "/about" },
+    { name: "About Us", href: "/about" },
     { name: "Careers", href: "/careers" },
     { name: "Press", href: "/press" },
     { name: "Contact", href: "/contact" },
