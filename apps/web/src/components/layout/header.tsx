@@ -4,15 +4,14 @@ import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Logo } from "@/components/ui/logo"
 import { NavigationDropdown, MobileDropdown, type DropdownItem } from "@/components/ui/navigation-dropdown"
 import { 
-  FileText, 
   Menu, 
   X, 
   Sparkles,
   ArrowRight
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Features", href: "/features" },
@@ -139,15 +138,7 @@ export function Header() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between gap-x-4 p-6 lg:px-8" aria-label="Global">
         {/* Logo - Fixed width on desktop */}
         <div className="flex items-center flex-shrink-0">
-          <Link href="/" className="-m-1.5 p-1.5 flex items-center space-x-2">
-            <div className="relative">
-              <FileText className="h-8 w-8 text-blue-600" />
-              <Sparkles className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent whitespace-nowrap">
-              LexiScan AI
-            </span>
-          </Link>
+          <Logo className="-m-1.5 p-1.5" />
         </div>
         
         {/* Mobile menu button */}
@@ -215,10 +206,7 @@ export function Header() {
           <div className="fixed inset-0 z-50" />
           <div className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-white px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-gray-900/10">
             <div className="flex items-center justify-between">
-              <Link href="/" className="-m-1.5 p-1.5 flex items-center space-x-2">
-                <FileText className="h-8 w-8 text-blue-600" />
-                <span className="text-xl font-bold">LexiScan AI</span>
-              </Link>
+              <Logo className="-m-1.5 p-1.5" />
               <button
                 type="button"
                 className="-m-2.5 rounded-md p-2.5 text-gray-700"

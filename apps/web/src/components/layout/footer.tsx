@@ -1,8 +1,9 @@
 import Link from "next/link"
-import { FileText, Twitter, Linkedin, Github, Mail } from "lucide-react"
+import { Twitter, Linkedin, Github, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Logo } from "@/components/ui/logo"
 
 const navigation = {
   product: [
@@ -69,10 +70,7 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-6 pb-8 pt-16 sm:pt-24 lg:px-8 lg:pt-32">
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-8">
-            <div className="flex items-center space-x-2">
-              <FileText className="h-8 w-8 text-blue-400" />
-              <span className="text-xl font-bold text-white">LexiScan AI</span>
-            </div>
+            <Logo href="/" variant="light" />
             <p className="text-sm leading-6 text-gray-300">
               Transform your legal workflow with AI-powered document analysis, 
               contract review, and intelligent insights. Save time and reduce errors 
