@@ -3,8 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { Logo } from "@/components/ui/logo"
 import { 
-  FileText, 
+  FileText,
   BarChart3, 
   Users, 
   Settings, 
@@ -245,12 +246,7 @@ function SidebarContent() {
       {/* Logo */}
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
         <div className="flex items-center flex-shrink-0 px-4">
-          <Link href="/dashboard" className="flex items-center space-x-2">
-            <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <FileText className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">LexiScan AI</span>
-          </Link>
+          <Logo href="/dashboard" variant="dashboard" />
         </div>
         
         {/* Organization info */}

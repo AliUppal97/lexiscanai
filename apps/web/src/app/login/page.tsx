@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Eye, EyeOff, FileText, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, ArrowLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/ui/logo"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -76,10 +77,7 @@ export default function LoginPage() {
           <ArrowLeft className="h-4 w-4" />
           <span className="text-sm font-medium">Back to home</span>
         </Link>
-        <Link href="/" className="flex items-center gap-2">
-          <FileText className="h-6 w-6 text-blue-600" />
-          <span className="text-lg font-bold text-gray-900">LexiScan AI</span>
-        </Link>
+        <Logo href="/" size="sm" variant="dark" />
       </div>
 
       {/* Centered form */}
