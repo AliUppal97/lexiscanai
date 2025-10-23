@@ -37,7 +37,8 @@ import {
   Boxes,
   Link2,
   Play,
-  Settings
+  Settings,
+  Scale
 } from "lucide-react"
 
 export const metadata: Metadata = {
