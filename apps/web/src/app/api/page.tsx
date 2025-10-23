@@ -450,12 +450,12 @@ export default function APIPage() {
                   </Button>
                 </Link>
                 <Link href="/docs">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     <Book className="mr-2 h-4 w-4" />
                     View Documentation
                   </Button>
                 </Link>
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                   <Play className="mr-2 h-4 w-4" />
                   Try API Playground
                 </Button>
@@ -946,13 +946,13 @@ export default function APIPage() {
                   </Button>
                 </Link>
                 <Link href="/docs">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     <Book className="mr-2 h-4 w-4" />
                     Read Documentation
                   </Button>
                 </Link>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     Talk to Sales
                   </Button>
                 </Link>
