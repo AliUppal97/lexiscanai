@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { Header } from "@/components/layout/header"
+import { Footer } from "@/components/layout/footer"
 import { Shield, Lock, Eye, Database, Server, Users, AlertTriangle, CheckCircle, FileText, Calendar, Globe, Zap, ArrowRight } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -170,6 +172,8 @@ const auditReports = [
 export default function SecurityPage() {
   return (
     <div className="min-h-screen bg-white">
+      <Header />
+      
       <main>
         {/* Hero Section */}
         <section className="relative bg-gradient-to-br from-blue-50 via-white to-purple-50 pt-20 pb-24 sm:pt-24 sm:pb-32">
@@ -516,6 +520,8 @@ export default function SecurityPage() {
           </div>
         </section>
       </main>
+      
+      <Footer />
     </div>
   )
 }
