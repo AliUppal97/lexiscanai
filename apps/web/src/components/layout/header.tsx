@@ -73,6 +73,14 @@ const solutions: DropdownItem[] = [
     category: "Real Estate",
     popular: false
   },
+  {
+    name: "Government",
+    description: "FedRAMP authorized for public sector",
+    href: "/solutions/government",
+    icon: "🏛️",
+    category: "Public Sector",
+    popular: true
+  },
 ]
 
 export function Header() {
