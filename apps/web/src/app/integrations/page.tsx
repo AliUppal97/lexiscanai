@@ -763,13 +763,13 @@ export default function IntegrationsPage() {
                   </Button>
                 </Link>
                 <Link href="/api">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     <Code className="mr-2 h-4 w-4" />
                     View API Docs
                   </Button>
                 </Link>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/20 bg-white/5">
                     Contact Sales
                   </Button>
                 </Link>
