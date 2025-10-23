@@ -18,6 +18,7 @@ const navigation = [
   { name: "Features", href: "/features" },
   { name: "Pricing", href: "/pricing" },
   { name: "API", href: "/api" },
+  { name: "Integrations", href: "/integrations" },
   { name: "About", href: "/about" },
   { name: "Blog", href: "/blog" },
   { name: "Help", href: "/help" },
