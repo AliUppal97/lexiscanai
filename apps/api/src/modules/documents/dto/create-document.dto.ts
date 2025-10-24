@@ -1,57 +1,60 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 import { DocumentStatus } from '@prisma/client';
 
 export class CreateDocumentDto {
-  @ApiProperty({ description: 'Document title', example: 'Contract Agreement 2024' })
+  @ApiProperty({
+    description: 'Document title',
+    example: 'Contract Agreement 2024',
+    maxLength: 255,
+  })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   title: string;
 
-  @ApiPropertyOptional({ description: 'Document content/description' })
-  @IsOptional()
+  @ApiProperty({
+    description: 'Document content or description',
+    example: 'Legal contract for services...',
+    required: false,
+  })
   @IsString()
+  @IsOptional()
   content?: string;
 
-  @ApiPropertyOptional({ description: 'MIME type', example: 'application/pdf' })
-  @IsOptional()
+  @ApiProperty({
+    description: 'Document file path (S3/storage URL)',
+    example: 's3://bucket/documents/file.pdf',
+    required: false,
+  })
   @IsString()
+  @IsOptional()
+  filePath?: string;
+
+  @ApiProperty({
+    description: 'File size in bytes',
+    example: 1024567,
+    required: false,
+  })
+  @IsOptional()
+  fileSize?: number;
+
+  @ApiProperty({
+    description: 'MIME type of the file',
+    example: 'application/pdf',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
   mimeType?: string;
-}
 
-export class UpdateDocumentDto {
-  @ApiPropertyOptional({ description: 'Document title' })
-  @IsOptional()
-  @IsString()
-  title?: string;
-
-  @ApiPropertyOptional({ description: 'Document content' })
-  @IsOptional()
-  @IsString()
-  content?: string;
-
-  @ApiPropertyOptional({ description: 'Document status', enum: DocumentStatus })
-  @IsOptional()
+  @ApiProperty({
+    description: 'Document status',
+    enum: DocumentStatus,
+    example: DocumentStatus.UPLOADED,
+    required: false,
+  })
   @IsEnum(DocumentStatus)
+  @IsOptional()
   status?: DocumentStatus;
 }
-
-export class DocumentQueryDto {
-  @ApiPropertyOptional({ description: 'Filter by status', enum: DocumentStatus })
-  @IsOptional()
-  @IsEnum(DocumentStatus)
-  status?: DocumentStatus;
-
-  @ApiPropertyOptional({ description: 'Search query' })
-  @IsOptional()
-  @IsString()
-  search?: string;
-
-  @ApiPropertyOptional({ description: 'Page number', example: 1 })
-  @IsOptional()
-  page?: number;
-
-  @ApiPropertyOptional({ description: 'Items per page', example: 20 })
-  @IsOptional()
-  limit?: number;
-}
-
