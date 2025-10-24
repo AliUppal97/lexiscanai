@@ -8,218 +8,247 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
+  Req,
+  Headers,
   HttpCode,
   HttpStatus,
-  Headers,
-  RawBodyRequest,
-  Req,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiParam,
-  ApiQuery,
-} from '@nestjs/swagger';
-import { JwtAuthGuard, PermissionsGuard } from '../auth/auth.guard';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
-import { SubscriptionService } from './subscription.service';
-import { InvoiceService } from './invoice.service';
-import { StripeService } from './stripe.service';
-import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
-import { InvoiceQueryParams } from './dto/invoice.dto';
-import { BillingStatus } from '@prisma/client';
+import { JwtAuthGuard } from '../auth/auth.guard';
+import {
+  CreateSubscriptionDto,
+  UpdateSubscriptionDto,
+  QueryInvoicesDto,
+  InvoiceDto,
+} from './dto';
+import { Billing } from '@prisma/client';
 
 @ApiTags('Billing')
 @Controller('billing')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class BillingController {
-  constructor(
-    private billingService: BillingService,
-    private subscriptionService: SubscriptionService,
-    private invoiceService: InvoiceService,
-    private stripeService: StripeService,
-  ) {}
+  constructor(private readonly billingService: BillingService) {}
 
-  // ============================================================================
-  // SUBSCRIPTIONS
-  // ============================================================================
+  // ========== Subscription Endpoints ==========
 
   @Post('subscriptions')
-  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new subscription' })
-  @ApiResponse({ status: 201, description: 'Subscription created successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({
+    status: 201,
+    description: 'Subscription created successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid input or user already has active subscription',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing authentication token',
+  })
   async createSubscription(
-    @Request() req,
+    @Req() req: any,
     @Body() createSubscriptionDto: CreateSubscriptionDto,
-  ) {
-    return this.subscriptionService.createSubscription(
-      req.user.sub,
-      req.tenantId,
-      createSubscriptionDto,
-    );
+  ): Promise<Billing> {
+    const tenantId = req.tenantId;
+    return this.billingService.createSubscription(tenantId, createSubscriptionDto);
+  }
+
+  @Get('subscriptions/active')
+  @ApiOperation({ summary: 'Get current user active subscription' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns active subscription or null',
+  })
+  async getActiveSubscription(@Req() req: any): Promise<Billing | null> {
+    const { tenantId, user } = req;
+    return this.billingService.getActiveSubscription(tenantId, user.id);
+  }
+
+  @Get('subscriptions/:id')
+  @ApiOperation({ summary: 'Get subscription by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns subscription details',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Subscription not found',
+  })
+  async getSubscription(
+    @Req() req: any,
+    @Param('id') id: string,
+  ): Promise<Billing> {
+    const { tenantId, user } = req;
+    return this.billingService.getSubscription(tenantId, id, user.id);
   }
 
   @Put('subscriptions/:id')
   @ApiOperation({ summary: 'Update a subscription' })
-  @ApiParam({ name: 'id', description: 'Subscription ID' })
-  @ApiResponse({ status: 200, description: 'Subscription updated successfully' })
-  @ApiResponse({ status: 404, description: 'Subscription not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription updated successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Subscription not found',
+  })
   async updateSubscription(
-    @Request() req,
-    @Param('id') subscriptionId: string,
+    @Req() req: any,
+    @Param('id') id: string,
     @Body() updateSubscriptionDto: UpdateSubscriptionDto,
-  ) {
-    return this.subscriptionService.updateSubscription(
-      req.user.sub,
-      req.tenantId,
-      subscriptionId,
-      updateSubscriptionDto,
-    );
+  ): Promise<Billing> {
+    const { tenantId, user } = req;
+    return this.billingService.updateSubscription(tenantId, id, user.id, updateSubscriptionDto);
   }
 
   @Delete('subscriptions/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cancel a subscription' })
-  @ApiParam({ name: 'id', description: 'Subscription ID' })
-  @ApiQuery({ name: 'immediately', required: false, type: Boolean })
-  @ApiResponse({ status: 204, description: 'Subscription cancelled successfully' })
-  @ApiResponse({ status: 404, description: 'Subscription not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription cancelled successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Subscription not found',
+  })
   async cancelSubscription(
-    @Request() req,
-    @Param('id') subscriptionId: string,
-    @Query('immediately') immediately?: boolean,
-  ) {
-    await this.subscriptionService.cancelSubscription(
-      req.user.sub,
-      req.tenantId,
-      subscriptionId,
-      immediately === true || immediately === 'true' as any,
-    );
-  }
-
-  @Get('subscriptions/:id')
-  @ApiOperation({ summary: 'Get subscription details' })
-  @ApiParam({ name: 'id', description: 'Subscription ID' })
-  @ApiResponse({ status: 200, description: 'Subscription details retrieved' })
-  @ApiResponse({ status: 404, description: 'Subscription not found' })
-  async getSubscription(@Request() req, @Param('id') subscriptionId: string) {
-    return this.subscriptionService.getSubscription(
-      req.user.sub,
-      req.tenantId,
-      subscriptionId,
-    );
+    @Req() req: any,
+    @Param('id') id: string,
+  ): Promise<Billing> {
+    const { tenantId, user } = req;
+    return this.billingService.cancelSubscription(tenantId, id, user.id);
   }
 
   @Get('subscriptions')
-  @ApiOperation({ summary: 'List all subscriptions for tenant' })
-  @ApiQuery({ name: 'status', required: false, enum: BillingStatus })
-  @ApiResponse({ status: 200, description: 'Subscriptions retrieved' })
-  async listSubscriptions(@Request() req, @Query('status') status?: BillingStatus) {
-    return this.subscriptionService.listSubscriptions(req.tenantId, status);
+  @ApiOperation({ summary: 'List all subscriptions for tenant (admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of subscriptions',
+  })
+  async listSubscriptions(
+    @Req() req: any,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ): Promise<{ subscriptions: Billing[]; total: number; page: number; totalPages: number }> {
+    const tenantId = req.tenantId;
+    return this.billingService.listSubscriptions(tenantId, page, limit);
   }
 
-  @Get('subscriptions/current/details')
-  @ApiOperation({ summary: 'Get current active subscription' })
-  @ApiResponse({ status: 200, description: 'Current subscription retrieved' })
-  async getCurrentSubscription(@Request() req) {
-    return this.subscriptionService.getCurrentSubscription(req.tenantId);
-  }
+  // ========== Invoice Endpoints ==========
 
-  // ============================================================================
-  // INVOICES
-  // ============================================================================
-
-  @Get('invoices')
-  @ApiOperation({ summary: 'List invoices for tenant' })
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Invoices retrieved' })
-  async listInvoices(
-    @Request() req,
-    @Query('status') status?: string,
-    @Query('limit') limit?: number,
-  ) {
-    const queryParams: InvoiceQueryParams = {
-      status: status as any,
-      limit: limit ? parseInt(limit.toString()) : undefined,
-    };
-
-    return this.invoiceService.listInvoices(req.tenantId, queryParams);
-  }
-
-  @Get('invoices/upcoming')
-  @ApiOperation({ summary: 'Get upcoming invoice preview' })
-  @ApiResponse({ status: 200, description: 'Upcoming invoice retrieved' })
-  async getUpcomingInvoice(@Request() req) {
-    return this.invoiceService.getUpcomingInvoice(req.tenantId);
+  @Get('invoices/me')
+  @ApiOperation({ summary: 'List invoices for current user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of user invoices',
+  })
+  async listMyInvoices(
+    @Req() req: any,
+    @Query() query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const { tenantId, user } = req;
+    return this.billingService.listInvoices(tenantId, user.id, query);
   }
 
   @Get('invoices/:id')
-  @ApiOperation({ summary: 'Get invoice details' })
-  @ApiParam({ name: 'id', description: 'Invoice ID' })
-  @ApiResponse({ status: 200, description: 'Invoice details retrieved' })
-  @ApiResponse({ status: 404, description: 'Invoice not found' })
-  async getInvoice(@Request() req, @Param('id') invoiceId: string) {
-    return this.invoiceService.getInvoice(req.tenantId, invoiceId);
+  @ApiOperation({ summary: 'Get invoice by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns invoice details',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Invoice not found',
+  })
+  async getInvoice(
+    @Req() req: any,
+    @Param('id') id: string,
+  ): Promise<InvoiceDto> {
+    const { tenantId, user } = req;
+    return this.billingService.getInvoice(tenantId, user.id, id);
   }
 
   @Get('invoices/:id/download')
   @ApiOperation({ summary: 'Download invoice PDF' })
-  @ApiParam({ name: 'id', description: 'Invoice ID' })
-  @ApiResponse({ status: 200, description: 'Invoice PDF URL' })
-  @ApiResponse({ status: 404, description: 'Invoice not found' })
-  async downloadInvoice(@Request() req, @Param('id') invoiceId: string) {
-    const pdfUrl = await this.invoiceService.downloadInvoice(req.tenantId, invoiceId);
-    return { pdfUrl };
+  @ApiResponse({
+    status: 200,
+    description: 'Returns invoice download URL',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Invoice not found',
+  })
+  async downloadInvoice(
+    @Req() req: any,
+    @Param('id') id: string,
+  ): Promise<{ url: string }> {
+    const { tenantId, user } = req;
+    return this.billingService.downloadInvoice(tenantId, user.id, id);
   }
 
-  // ============================================================================
-  // BILLING OVERVIEW & STATISTICS
-  // ============================================================================
-
-  @Get('overview')
-  @ApiOperation({ summary: 'Get billing overview' })
-  @ApiResponse({ status: 200, description: 'Billing overview retrieved' })
-  async getBillingOverview(@Request() req) {
-    return this.billingService.getBillingOverview(req.tenantId);
+  @Get('invoices')
+  @ApiOperation({ summary: 'List all invoices for tenant (admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of all tenant invoices',
+  })
+  async listTenantInvoices(
+    @Req() req: any,
+    @Query() query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const tenantId = req.tenantId;
+    return this.billingService.listTenantInvoices(tenantId, query);
   }
 
   @Get('statistics')
-  @ApiOperation({ summary: 'Get billing statistics' })
-  @ApiResponse({ status: 200, description: 'Billing statistics retrieved' })
-  async getBillingStatistics(@Request() req) {
-    return this.billingService.getBillingStatistics(req.tenantId);
+  @ApiOperation({ summary: 'Get billing statistics for tenant (admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns billing statistics',
+  })
+  async getStatistics(@Req() req: any): Promise<{
+    totalRevenue: number;
+    totalInvoices: number;
+    paidInvoices: number;
+    pendingInvoices: number;
+    failedInvoices: number;
+    averageInvoiceAmount: number;
+  }> {
+    const tenantId = req.tenantId;
+    return this.billingService.getInvoiceStatistics(tenantId);
   }
 
-  // ============================================================================
-  // STRIPE WEBHOOK
-  // ============================================================================
+  // ========== Webhook Endpoints ==========
 
   @Post('webhooks/stripe')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Stripe webhook endpoint' })
-  @ApiResponse({ status: 200, description: 'Webhook processed' })
-  @ApiResponse({ status: 400, description: 'Invalid webhook signature' })
+  @ApiOperation({ summary: 'Handle Stripe webhook events' })
+  @ApiResponse({
+    status: 200,
+    description: 'Webhook processed successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid webhook signature',
+  })
   async handleStripeWebhook(
+    @Body() body: any,
     @Headers('stripe-signature') signature: string,
-    @Req() req: RawBodyRequest<Request>,
-  ) {
-    // Verify webhook signature
-    const event = this.stripeService.verifyWebhookSignature(
-      req.rawBody || '',
-      signature,
-    );
-
-    // Process webhook event
-    await this.billingService.handleWebhookEvent(event);
-
+  ): Promise<{ received: boolean }> {
+    const payload = JSON.stringify(body);
+    await this.billingService.handleWebhook(payload, signature);
     return { received: true };
   }
 }
-

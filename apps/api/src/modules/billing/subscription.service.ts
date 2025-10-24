@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { StripeService } from './stripe.service';
-import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
-import { BillingPlan, BillingStatus } from '@prisma/client';
-import Stripe from 'stripe';
+import { Billing, BillingPlan, BillingStatus } from '@prisma/client';
+import { CreateSubscriptionDto, UpdateSubscriptionDto } from './dto';
 
 @Injectable()
 export class SubscriptionService {
@@ -19,304 +23,236 @@ export class SubscriptionService {
    * Create a new subscription
    */
   async createSubscription(
-    userId: string,
     tenantId: string,
-    createSubscriptionDto: CreateSubscriptionDto,
-  ) {
-    try {
-      // Get user and tenant
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { tenant: true },
-      });
-
-      if (!user || user.tenantId !== tenantId) {
-        throw new NotFoundException('User not found');
-      }
-
-      // Check if user already has an active subscription
-      const existingBilling = await this.prisma.billing.findFirst({
-        where: {
-          tenantId,
-          status: BillingStatus.ACTIVE,
-        },
-      });
-
-      if (existingBilling) {
-        throw new BadRequestException('An active subscription already exists');
-      }
-
-      // Create or get Stripe customer
-      let stripeCustomerId = user.tenant.settings?.['stripeCustomerId'] as string;
-
-      if (!stripeCustomerId) {
-        const customer = await this.stripeService.createCustomer({
-          email: user.email,
-          name: user.tenant.name,
-          tenantId: tenantId,
-        });
-        stripeCustomerId = customer.id;
-
-        // Update tenant with Stripe customer ID
-        await this.prisma.tenant.update({
-          where: { id: tenantId },
-          data: {
-            settings: {
-              ...(user.tenant.settings as object),
-              stripeCustomerId: customer.id,
-            },
-          },
-        });
-      }
-
-      // Create Stripe subscription
-      const stripeSubscription = await this.stripeService.createSubscription({
-        customerId: stripeCustomerId,
-        plan: createSubscriptionDto.plan,
-        paymentMethodId: createSubscriptionDto.paymentMethodId,
-        couponCode: createSubscriptionDto.couponCode,
-        seats: createSubscriptionDto.seats,
-      });
-
-      // Calculate amount
-      const seats = createSubscriptionDto.seats || 1;
-      const amount = this.stripeService.getPlanPrice(createSubscriptionDto.plan, seats);
-
-      // Create billing record
-      const billing = await this.prisma.billing.create({
-        data: {
-          userId,
-          tenantId,
-          plan: createSubscriptionDto.plan,
-          status: BillingStatus.ACTIVE,
-          amount: amount / 100, // Convert cents to dollars
-          currency: 'USD',
-          periodStart: new Date(stripeSubscription.current_period_start * 1000),
-          periodEnd: new Date(stripeSubscription.current_period_end * 1000),
-        },
-      });
-
-      // Log audit event
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action: 'subscription.created',
-          resource: 'subscription',
-          resourceId: billing.id,
-          details: {
-            plan: createSubscriptionDto.plan,
-            amount,
-            stripeSubscriptionId: stripeSubscription.id,
-          },
-        },
-      });
-
-      this.logger.log(`Subscription created for tenant ${tenantId}, plan: ${createSubscriptionDto.plan}`);
-
-      return {
-        billing,
-        stripeSubscription,
-        clientSecret: (stripeSubscription.latest_invoice as Stripe.Invoice)?.payment_intent 
-          ? ((stripeSubscription.latest_invoice as Stripe.Invoice).payment_intent as Stripe.PaymentIntent)?.client_secret
-          : null,
-      };
-    } catch (error) {
-      this.logger.error('Failed to create subscription', error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Update subscription
-   */
-  async updateSubscription(
-    userId: string,
-    tenantId: string,
-    subscriptionId: string,
-    updateSubscriptionDto: UpdateSubscriptionDto,
-  ) {
-    try {
-      // Find existing billing
-      const billing = await this.prisma.billing.findFirst({
-        where: {
-          id: subscriptionId,
-          tenantId,
-        },
-        include: { tenant: true },
-      });
-
-      if (!billing) {
-        throw new NotFoundException('Subscription not found');
-      }
-
-      const stripeCustomerId = billing.tenant.settings?.['stripeCustomerId'] as string;
-      const stripeSubscriptionId = billing.tenant.settings?.['stripeSubscriptionId'] as string;
-
-      if (!stripeCustomerId || !stripeSubscriptionId) {
-        throw new BadRequestException('No Stripe subscription found');
-      }
-
-      // Update Stripe subscription
-      const updatedStripeSubscription = await this.stripeService.updateSubscription({
-        subscriptionId: stripeSubscriptionId,
-        plan: updateSubscriptionDto.plan,
-        seats: updateSubscriptionDto.seats,
-        paymentMethodId: updateSubscriptionDto.paymentMethodId,
-      });
-
-      // Update billing record
-      const updateData: any = {};
-      
-      if (updateSubscriptionDto.plan) {
-        updateData.plan = updateSubscriptionDto.plan;
-        const seats = updateSubscriptionDto.seats || 1;
-        const amount = this.stripeService.getPlanPrice(updateSubscriptionDto.plan, seats);
-        updateData.amount = amount / 100;
-      }
-
-      const updatedBilling = await this.prisma.billing.update({
-        where: { id: subscriptionId },
-        data: {
-          ...updateData,
-          periodEnd: new Date(updatedStripeSubscription.current_period_end * 1000),
-          updatedAt: new Date(),
-        },
-      });
-
-      // Log audit event
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action: 'subscription.updated',
-          resource: 'subscription',
-          resourceId: subscriptionId,
-          details: {
-            changes: updateSubscriptionDto,
-          },
-        },
-      });
-
-      this.logger.log(`Subscription ${subscriptionId} updated for tenant ${tenantId}`);
-
-      return {
-        billing: updatedBilling,
-        stripeSubscription: updatedStripeSubscription,
-      };
-    } catch (error) {
-      this.logger.error('Failed to update subscription', error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Cancel subscription
-   */
-  async cancelSubscription(
-    userId: string,
-    tenantId: string,
-    subscriptionId: string,
-    immediately: boolean = false,
-  ) {
-    try {
-      const billing = await this.prisma.billing.findFirst({
-        where: {
-          id: subscriptionId,
-          tenantId,
-        },
-        include: { tenant: true },
-      });
-
-      if (!billing) {
-        throw new NotFoundException('Subscription not found');
-      }
-
-      const stripeSubscriptionId = billing.tenant.settings?.['stripeSubscriptionId'] as string;
-
-      if (stripeSubscriptionId) {
-        await this.stripeService.cancelSubscription(stripeSubscriptionId, immediately);
-      }
-
-      // Update billing status
-      const updatedBilling = await this.prisma.billing.update({
-        where: { id: subscriptionId },
-        data: {
-          status: BillingStatus.CANCELLED,
-          periodEnd: immediately ? new Date() : billing.periodEnd,
-        },
-      });
-
-      // Log audit event
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action: 'subscription.cancelled',
-          resource: 'subscription',
-          resourceId: subscriptionId,
-          details: {
-            immediately,
-          },
-        },
-      });
-
-      this.logger.log(`Subscription ${subscriptionId} cancelled for tenant ${tenantId}`);
-
-      return updatedBilling;
-    } catch (error) {
-      this.logger.error('Failed to cancel subscription', error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Get subscription details
-   */
-  async getSubscription(userId: string, tenantId: string, subscriptionId: string) {
-    const billing = await this.prisma.billing.findFirst({
+    dto: CreateSubscriptionDto,
+  ): Promise<Billing> {
+    // Verify user exists and belongs to tenant
+    const user = await this.prisma.user.findFirst({
       where: {
-        id: subscriptionId,
+        id: dto.userId,
         tenantId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        tenant: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
+        isActive: true,
+        isDeleted: false,
       },
     });
 
-    if (!billing) {
-      throw new NotFoundException('Subscription not found');
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
+
+    // Check if user already has an active subscription
+    const existingSubscription = await this.prisma.billing.findFirst({
+      where: {
+        userId: dto.userId,
+        tenantId,
+        status: BillingStatus.ACTIVE,
+      },
+    });
+
+    if (existingSubscription) {
+      throw new BadRequestException('User already has an active subscription');
+    }
+
+    // Free plan doesn't require Stripe
+    if (dto.plan === BillingPlan.FREE) {
+      return this.createFreeSubscription(tenantId, dto.userId);
+    }
+
+    // Create Stripe customer if not exists
+    let stripeCustomerId = user.email; // In real implementation, store this in user metadata
+
+    try {
+      const stripeCustomer = await this.stripeService.createCustomer(
+        user.email,
+        tenantId,
+        dto.userId,
+      );
+      stripeCustomerId = stripeCustomer.id;
+    } catch (error) {
+      this.logger.error(`Failed to create Stripe customer: ${error.message}`);
+    }
+
+    // Create Stripe subscription
+    const stripeSubscription = await this.stripeService.createSubscription(
+      stripeCustomerId,
+      dto.plan,
+      dto.paymentMethodId,
+    );
+
+    // Get plan pricing
+    const pricing = this.stripeService.getPlanPricing(dto.plan);
+
+    // Calculate period
+    const periodStart = new Date();
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + (dto.billingPeriodMonths || 1));
+
+    // Create billing record
+    const billing = await this.prisma.billing.create({
+      data: {
+        userId: dto.userId,
+        tenantId,
+        plan: dto.plan,
+        status: BillingStatus.ACTIVE,
+        amount: pricing.amount / 100, // Convert cents to dollars
+        currency: dto.currency || 'USD',
+        periodStart,
+        periodEnd,
+      },
+    });
+
+    // Create audit log
+    await this.createAuditLog(
+      tenantId,
+      dto.userId,
+      'subscription.created',
+      billing.id,
+      { plan: dto.plan, stripeSubscriptionId: stripeSubscription.id },
+    );
+
+    this.logger.log(`Created subscription ${billing.id} for user ${dto.userId}`);
 
     return billing;
   }
 
   /**
-   * List subscriptions for tenant
+   * Update an existing subscription
    */
-  async listSubscriptions(tenantId: string, status?: BillingStatus) {
-    const where: any = { tenantId };
-    
-    if (status) {
-      where.status = status;
+  async updateSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+    dto: UpdateSubscriptionDto,
+  ): Promise<Billing> {
+    // Find subscription
+    const subscription = await this.prisma.billing.findFirst({
+      where: {
+        id: subscriptionId,
+        tenantId,
+        userId,
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
     }
 
-    return await this.prisma.billing.findMany({
-      where,
+    // If changing plan, update Stripe subscription
+    if (dto.plan && dto.plan !== subscription.plan) {
+      // Handle plan change logic
+      const pricing = this.stripeService.getPlanPricing(dto.plan);
+      
+      // Update in database
+      const updated = await this.prisma.billing.update({
+        where: { id: subscriptionId },
+        data: {
+          plan: dto.plan,
+          amount: pricing.amount / 100,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Create audit log
+      await this.createAuditLog(
+        tenantId,
+        userId,
+        'subscription.plan_changed',
+        subscriptionId,
+        { oldPlan: subscription.plan, newPlan: dto.plan },
+      );
+
+      this.logger.log(`Updated subscription ${subscriptionId} plan from ${subscription.plan} to ${dto.plan}`);
+
+      return updated;
+    }
+
+    // If changing status
+    if (dto.status && dto.status !== subscription.status) {
+      const updated = await this.prisma.billing.update({
+        where: { id: subscriptionId },
+        data: {
+          status: dto.status,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Create audit log
+      await this.createAuditLog(
+        tenantId,
+        userId,
+        'subscription.status_changed',
+        subscriptionId,
+        { oldStatus: subscription.status, newStatus: dto.status },
+      );
+
+      return updated;
+    }
+
+    return subscription;
+  }
+
+  /**
+   * Cancel a subscription
+   */
+  async cancelSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+  ): Promise<Billing> {
+    const subscription = await this.prisma.billing.findFirst({
+      where: {
+        id: subscriptionId,
+        tenantId,
+        userId,
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    if (subscription.status === BillingStatus.CANCELLED) {
+      throw new BadRequestException('Subscription is already cancelled');
+    }
+
+    // Update status to cancelled
+    const cancelled = await this.prisma.billing.update({
+      where: { id: subscriptionId },
+      data: {
+        status: BillingStatus.CANCELLED,
+        periodEnd: new Date(), // End immediately
+        updatedAt: new Date(),
+      },
+    });
+
+    // Create audit log
+    await this.createAuditLog(
+      tenantId,
+      userId,
+      'subscription.cancelled',
+      subscriptionId,
+      { plan: subscription.plan },
+    );
+
+    this.logger.log(`Cancelled subscription ${subscriptionId}`);
+
+    return cancelled;
+  }
+
+  /**
+   * Get subscription details
+   */
+  async getSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+  ): Promise<Billing> {
+    const subscription = await this.prisma.billing.findFirst({
+      where: {
+        id: subscriptionId,
+        tenantId,
+        userId,
+      },
       include: {
         user: {
           select: {
@@ -326,6 +262,28 @@ export class SubscriptionService {
             lastName: true,
           },
         },
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    return subscription;
+  }
+
+  /**
+   * Get user's active subscription
+   */
+  async getActiveSubscription(
+    tenantId: string,
+    userId: string,
+  ): Promise<Billing | null> {
+    return this.prisma.billing.findFirst({
+      where: {
+        userId,
+        tenantId,
+        status: BillingStatus.ACTIVE,
       },
       orderBy: {
         createdAt: 'desc',
@@ -334,25 +292,116 @@ export class SubscriptionService {
   }
 
   /**
-   * Get current active subscription for tenant
+   * List all subscriptions for a tenant
    */
-  async getCurrentSubscription(tenantId: string) {
-    return await this.prisma.billing.findFirst({
-      where: {
-        tenantId,
-        status: BillingStatus.ACTIVE,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
+  async listSubscriptions(
+    tenantId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<{ subscriptions: Billing[]; total: number; page: number; totalPages: number }> {
+    const skip = (page - 1) * limit;
+
+    const [subscriptions, total] = await Promise.all([
+      this.prisma.billing.findMany({
+        where: { tenantId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
           },
         },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.billing.count({
+        where: { tenantId },
+      }),
+    ]);
+
+    return {
+      subscriptions,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Check if subscription has expired
+   */
+  async checkAndUpdateExpiredSubscriptions(): Promise<number> {
+    const now = new Date();
+
+    const result = await this.prisma.billing.updateMany({
+      where: {
+        status: BillingStatus.ACTIVE,
+        periodEnd: {
+          lt: now,
+        },
+      },
+      data: {
+        status: BillingStatus.EXPIRED,
+        updatedAt: now,
+      },
+    });
+
+    this.logger.log(`Updated ${result.count} expired subscriptions`);
+
+    return result.count;
+  }
+
+  /**
+   * Private helper methods
+   */
+  private async createFreeSubscription(
+    tenantId: string,
+    userId: string,
+  ): Promise<Billing> {
+    const periodStart = new Date();
+    const periodEnd = new Date();
+    periodEnd.setFullYear(periodEnd.getFullYear() + 10); // 10 years for free plan
+
+    return this.prisma.billing.create({
+      data: {
+        userId,
+        tenantId,
+        plan: BillingPlan.FREE,
+        status: BillingStatus.ACTIVE,
+        amount: 0,
+        currency: 'USD',
+        periodStart,
+        periodEnd,
       },
     });
   }
-}
 
+  private async createAuditLog(
+    tenantId: string,
+    userId: string,
+    action: string,
+    resourceId: string,
+    details: any,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action,
+          resource: 'subscription',
+          resourceId,
+          details,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create audit log: ${error.message}`);
+    }
+  }
+}

@@ -1,14 +1,15 @@
-import { IsString, IsEnum, IsOptional, IsInt, Min, IsBoolean } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 import { BillingPlan } from '@prisma/client';
 
 export class CreateSubscriptionDto {
   @ApiProperty({
-    description: 'Billing plan',
+    description: 'Billing plan to subscribe to',
     enum: BillingPlan,
-    example: 'PREMIUM',
+    example: BillingPlan.BASIC,
   })
   @IsEnum(BillingPlan)
+  @IsNotEmpty()
   plan: BillingPlan;
 
   @ApiProperty({
@@ -16,33 +17,42 @@ export class CreateSubscriptionDto {
     example: 'pm_1234567890',
   })
   @IsString()
+  @IsNotEmpty()
   paymentMethodId: string;
 
-  @ApiPropertyOptional({
-    description: 'Promotional code or coupon',
-    example: 'WELCOME20',
+  @ApiProperty({
+    description: 'User ID to create subscription for',
+    example: 'cln1234567890',
   })
-  @IsOptional()
   @IsString()
-  couponCode?: string;
+  @IsNotEmpty()
+  userId: string;
 
-  @ApiPropertyOptional({
-    description: 'Number of users (for enterprise plans)',
-    example: 10,
-    minimum: 1,
+  @ApiProperty({
+    description: 'Billing period in months',
+    example: 1,
+    required: false,
   })
-  @IsOptional()
   @IsInt()
   @Min(1)
-  seats?: number;
-
-  @ApiPropertyOptional({
-    description: 'Enable auto-renewal',
-    example: true,
-    default: true,
-  })
   @IsOptional()
-  @IsBoolean()
-  autoRenew?: boolean;
-}
+  billingPeriodMonths?: number;
 
+  @ApiProperty({
+    description: 'Currency code',
+    example: 'USD',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  currency?: string;
+
+  @ApiProperty({
+    description: 'Coupon or promotion code',
+    example: 'SUMMER2024',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  couponCode?: string;
+}

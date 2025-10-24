@@ -1,343 +1,240 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma.service';
 import { SubscriptionService } from './subscription.service';
 import { InvoiceService } from './invoice.service';
 import { StripeService } from './stripe.service';
+import { 
+  CreateSubscriptionDto, 
+  UpdateSubscriptionDto, 
+  QueryInvoicesDto,
+  InvoiceDto 
+} from './dto';
+import { Billing } from '@prisma/client';
 
+/**
+ * Main billing service that coordinates subscription and invoice services
+ */
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
-    private prisma: PrismaService,
     private subscriptionService: SubscriptionService,
     private invoiceService: InvoiceService,
     private stripeService: StripeService,
   ) {}
 
+  // ========== Subscription Methods ==========
+
   /**
-   * Get billing overview for tenant
+   * Create a new subscription
    */
-  async getBillingOverview(tenantId: string) {
-    try {
-      // Get current subscription
-      const currentSubscription = await this.subscriptionService.getCurrentSubscription(
-        tenantId,
-      );
-
-      // Get recent invoices
-      const recentInvoices = await this.invoiceService.listInvoices(tenantId, {
-        limit: 5,
-      });
-
-      // Get upcoming invoice
-      const upcomingInvoice = await this.invoiceService.getUpcomingInvoice(tenantId);
-
-      // Get payment method info
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
-
-      let paymentMethod = null;
-      const stripeCustomerId = tenant?.settings?.['stripeCustomerId'] as string;
-
-      if (stripeCustomerId) {
-        try {
-          const customer = await this.stripeService['stripe'].customers.retrieve(
-            stripeCustomerId,
-          );
-          
-          if ('invoice_settings' in customer && customer.invoice_settings?.default_payment_method) {
-            const pm = await this.stripeService['stripe'].paymentMethods.retrieve(
-              customer.invoice_settings.default_payment_method as string,
-            );
-            
-            paymentMethod = {
-              type: pm.type,
-              last4: pm.card?.last4,
-              brand: pm.card?.brand,
-              expiryMonth: pm.card?.exp_month,
-              expiryYear: pm.card?.exp_year,
-            };
-          }
-        } catch (error) {
-          this.logger.warn('Failed to retrieve payment method', error.message);
-        }
-      }
-
-      return {
-        currentSubscription,
-        recentInvoices,
-        upcomingInvoice,
-        paymentMethod,
-      };
-    } catch (error) {
-      this.logger.error('Failed to get billing overview', error.stack);
-      throw error;
-    }
+  async createSubscription(
+    tenantId: string,
+    dto: CreateSubscriptionDto,
+  ): Promise<Billing> {
+    this.logger.log(`Creating subscription for tenant ${tenantId}`);
+    return this.subscriptionService.createSubscription(tenantId, dto);
   }
 
   /**
-   * Get billing statistics
+   * Update an existing subscription
    */
-  async getBillingStatistics(tenantId: string) {
-    try {
-      const [totalSpent, subscriptionCount, invoiceCount] = await Promise.all([
-        this.prisma.billing.aggregate({
-          where: { tenantId },
-          _sum: { amount: true },
-        }),
-        this.prisma.billing.count({
-          where: { tenantId },
-        }),
-        this.prisma.billing.count({
-          where: {
-            tenantId,
-            periodEnd: { lte: new Date() },
-          },
-        }),
-      ]);
+  async updateSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+    dto: UpdateSubscriptionDto,
+  ): Promise<Billing> {
+    this.logger.log(`Updating subscription ${subscriptionId}`);
+    return this.subscriptionService.updateSubscription(tenantId, subscriptionId, userId, dto);
+  }
 
-      return {
-        totalSpent: totalSpent._sum.amount || 0,
-        subscriptionCount,
-        invoiceCount,
-      };
-    } catch (error) {
-      this.logger.error('Failed to get billing statistics', error.stack);
-      throw error;
-    }
+  /**
+   * Cancel a subscription
+   */
+  async cancelSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+  ): Promise<Billing> {
+    this.logger.log(`Cancelling subscription ${subscriptionId}`);
+    return this.subscriptionService.cancelSubscription(tenantId, subscriptionId, userId);
+  }
+
+  /**
+   * Get subscription details
+   */
+  async getSubscription(
+    tenantId: string,
+    subscriptionId: string,
+    userId: string,
+  ): Promise<Billing> {
+    return this.subscriptionService.getSubscription(tenantId, subscriptionId, userId);
+  }
+
+  /**
+   * Get user's active subscription
+   */
+  async getActiveSubscription(
+    tenantId: string,
+    userId: string,
+  ): Promise<Billing | null> {
+    return this.subscriptionService.getActiveSubscription(tenantId, userId);
+  }
+
+  /**
+   * List all subscriptions for a tenant
+   */
+  async listSubscriptions(
+    tenantId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<{ subscriptions: Billing[]; total: number; page: number; totalPages: number }> {
+    return this.subscriptionService.listSubscriptions(tenantId, page, limit);
+  }
+
+  // ========== Invoice Methods ==========
+
+  /**
+   * Get invoice by ID
+   */
+  async getInvoice(
+    tenantId: string,
+    userId: string,
+    invoiceId: string,
+  ): Promise<InvoiceDto> {
+    return this.invoiceService.getInvoice(tenantId, userId, invoiceId);
+  }
+
+  /**
+   * List invoices for a user
+   */
+  async listInvoices(
+    tenantId: string,
+    userId: string,
+    query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    return this.invoiceService.listInvoices(tenantId, userId, query);
+  }
+
+  /**
+   * List all invoices for a tenant (admin only)
+   */
+  async listTenantInvoices(
+    tenantId: string,
+    query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    return this.invoiceService.listTenantInvoices(tenantId, query);
+  }
+
+  /**
+   * Download invoice PDF
+   */
+  async downloadInvoice(
+    tenantId: string,
+    userId: string,
+    invoiceId: string,
+  ): Promise<{ url: string }> {
+    return this.invoiceService.downloadInvoice(tenantId, userId, invoiceId);
+  }
+
+  /**
+   * Get invoice statistics for a tenant
+   */
+  async getInvoiceStatistics(tenantId: string): Promise<{
+    totalRevenue: number;
+    totalInvoices: number;
+    paidInvoices: number;
+    pendingInvoices: number;
+    failedInvoices: number;
+    averageInvoiceAmount: number;
+  }> {
+    return this.invoiceService.getInvoiceStatistics(tenantId);
+  }
+
+  // ========== Utility Methods ==========
+
+  /**
+   * Check and update expired subscriptions (cron job)
+   */
+  async checkExpiredSubscriptions(): Promise<number> {
+    this.logger.log('Checking for expired subscriptions');
+    return this.subscriptionService.checkAndUpdateExpiredSubscriptions();
   }
 
   /**
    * Handle Stripe webhook events
    */
-  async handleWebhookEvent(event: any) {
+  async handleWebhook(payload: string, signature: string): Promise<void> {
+    const isValid = this.stripeService.validateWebhookSignature(payload, signature);
+
+    if (!isValid) {
+      this.logger.error('Invalid webhook signature');
+      throw new Error('Invalid webhook signature');
+    }
+
+    // Parse webhook event
+    const event = JSON.parse(payload);
+
     this.logger.log(`Processing webhook event: ${event.type}`);
 
-    try {
-      switch (event.type) {
-        case 'customer.subscription.updated':
-          await this.handleSubscriptionUpdated(event.data.object);
-          break;
-
-        case 'customer.subscription.deleted':
-          await this.handleSubscriptionDeleted(event.data.object);
-          break;
-
-        case 'invoice.paid':
-          await this.handleInvoicePaid(event.data.object);
-          break;
-
-        case 'invoice.payment_failed':
-          await this.handleInvoicePaymentFailed(event.data.object);
-          break;
-
-        case 'customer.subscription.trial_will_end':
-          await this.handleTrialWillEnd(event.data.object);
-          break;
-
-        default:
-          this.logger.log(`Unhandled event type: ${event.type}`);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to handle webhook event: ${event.type}`, error.stack);
-      throw error;
+    // Handle different event types
+    switch (event.type) {
+      case 'customer.subscription.created':
+        await this.handleSubscriptionCreated(event.data.object);
+        break;
+      case 'customer.subscription.updated':
+        await this.handleSubscriptionUpdated(event.data.object);
+        break;
+      case 'customer.subscription.deleted':
+        await this.handleSubscriptionDeleted(event.data.object);
+        break;
+      case 'invoice.paid':
+        await this.handleInvoicePaid(event.data.object);
+        break;
+      case 'invoice.payment_failed':
+        await this.handleInvoicePaymentFailed(event.data.object);
+        break;
+      default:
+        this.logger.log(`Unhandled webhook event type: ${event.type}`);
     }
   }
 
   /**
-   * Handle subscription updated event
+   * Private webhook handlers
    */
-  private async handleSubscriptionUpdated(subscription: any) {
-    const customerId = subscription.customer;
-    
-    // Find tenant by Stripe customer ID
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        settings: {
-          path: ['stripeCustomerId'],
-          equals: customerId,
-        },
-      },
-    });
-
-    if (!tenant) {
-      this.logger.warn(`Tenant not found for Stripe customer: ${customerId}`);
-      return;
-    }
-
-    // Update billing record
-    await this.prisma.billing.updateMany({
-      where: {
-        tenantId: tenant.id,
-        status: 'ACTIVE',
-      },
-      data: {
-        periodEnd: new Date(subscription.current_period_end * 1000),
-        updatedAt: new Date(),
-      },
-    });
-
-    this.logger.log(`Updated subscription for tenant: ${tenant.id}`);
+  private async handleSubscriptionCreated(subscription: any): Promise<void> {
+    this.logger.log(`Subscription created: ${subscription.id}`);
+    // Implementation would sync with database
   }
 
-  /**
-   * Handle subscription deleted event
-   */
-  private async handleSubscriptionDeleted(subscription: any) {
-    const customerId = subscription.customer;
-    
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        settings: {
-          path: ['stripeCustomerId'],
-          equals: customerId,
-        },
-      },
-    });
-
-    if (!tenant) {
-      this.logger.warn(`Tenant not found for Stripe customer: ${customerId}`);
-      return;
-    }
-
-    // Mark subscription as cancelled
-    await this.prisma.billing.updateMany({
-      where: {
-        tenantId: tenant.id,
-        status: 'ACTIVE',
-      },
-      data: {
-        status: 'CANCELLED',
-        periodEnd: new Date(),
-        updatedAt: new Date(),
-      },
-    });
-
-    this.logger.log(`Cancelled subscription for tenant: ${tenant.id}`);
+  private async handleSubscriptionUpdated(subscription: any): Promise<void> {
+    this.logger.log(`Subscription updated: ${subscription.id}`);
+    // Implementation would sync with database
   }
 
-  /**
-   * Handle invoice paid event
-   */
-  private async handleInvoicePaid(invoice: any) {
-    const customerId = invoice.customer;
-    
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        settings: {
-          path: ['stripeCustomerId'],
-          equals: customerId,
-        },
-      },
-    });
-
-    if (!tenant) {
-      this.logger.warn(`Tenant not found for Stripe customer: ${customerId}`);
-      return;
-    }
-
-    // Log audit event
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: tenant.id,
-        action: 'invoice.paid',
-        resource: 'invoice',
-        resourceId: invoice.id,
-        details: {
-          amount: invoice.amount_paid,
-          currency: invoice.currency,
-        },
-      },
-    });
-
-    this.logger.log(`Invoice paid for tenant: ${tenant.id}, amount: ${invoice.amount_paid}`);
+  private async handleSubscriptionDeleted(subscription: any): Promise<void> {
+    this.logger.log(`Subscription deleted: ${subscription.id}`);
+    // Implementation would sync with database
   }
 
-  /**
-   * Handle invoice payment failed event
-   */
-  private async handleInvoicePaymentFailed(invoice: any) {
-    const customerId = invoice.customer;
-    
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        settings: {
-          path: ['stripeCustomerId'],
-          equals: customerId,
-        },
-      },
-    });
-
-    if (!tenant) {
-      this.logger.warn(`Tenant not found for Stripe customer: ${customerId}`);
-      return;
-    }
-
-    // Update billing status to PAST_DUE
-    await this.prisma.billing.updateMany({
-      where: {
-        tenantId: tenant.id,
-        status: 'ACTIVE',
-      },
-      data: {
-        status: 'PAST_DUE',
-        updatedAt: new Date(),
-      },
-    });
-
-    // Log audit event
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: tenant.id,
-        action: 'invoice.payment_failed',
-        resource: 'invoice',
-        resourceId: invoice.id,
-        details: {
-          amount: invoice.amount_due,
-          currency: invoice.currency,
-          attemptCount: invoice.attempt_count,
-        },
-      },
-    });
-
-    this.logger.warn(`Invoice payment failed for tenant: ${tenant.id}`);
+  private async handleInvoicePaid(invoice: any): Promise<void> {
+    this.logger.log(`Invoice paid: ${invoice.id}`);
+    // Implementation would update invoice status
   }
 
-  /**
-   * Handle trial will end event
-   */
-  private async handleTrialWillEnd(subscription: any) {
-    const customerId = subscription.customer;
-    
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        settings: {
-          path: ['stripeCustomerId'],
-          equals: customerId,
-        },
-      },
-    });
-
-    if (!tenant) {
-      this.logger.warn(`Tenant not found for Stripe customer: ${customerId}`);
-      return;
-    }
-
-    // Log audit event for notification purposes
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: tenant.id,
-        action: 'subscription.trial_ending',
-        resource: 'subscription',
-        details: {
-          trialEnd: new Date(subscription.trial_end * 1000),
-        },
-      },
-    });
-
-    this.logger.log(`Trial ending soon for tenant: ${tenant.id}`);
+  private async handleInvoicePaymentFailed(invoice: any): Promise<void> {
+    this.logger.log(`Invoice payment failed: ${invoice.id}`);
+    // Implementation would update invoice status and send notification
   }
 }
-

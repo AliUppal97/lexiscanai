@@ -1,41 +1,34 @@
-import { IsString, IsEnum, IsOptional, IsInt, Min, IsBoolean } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { BillingPlan } from '@prisma/client';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { BillingPlan, BillingStatus } from '@prisma/client';
 
 export class UpdateSubscriptionDto {
-  @ApiPropertyOptional({
-    description: 'New billing plan',
+  @ApiProperty({
+    description: 'Update billing plan',
     enum: BillingPlan,
-    example: 'ENTERPRISE',
+    example: BillingPlan.PREMIUM,
+    required: false,
   })
-  @IsOptional()
   @IsEnum(BillingPlan)
+  @IsOptional()
   plan?: BillingPlan;
 
-  @ApiPropertyOptional({
-    description: 'New payment method ID',
+  @ApiProperty({
+    description: 'Update billing status',
+    enum: BillingStatus,
+    example: BillingStatus.ACTIVE,
+    required: false,
+  })
+  @IsEnum(BillingStatus)
+  @IsOptional()
+  status?: BillingStatus;
+
+  @ApiProperty({
+    description: 'Update payment method ID',
     example: 'pm_0987654321',
+    required: false,
   })
-  @IsOptional()
   @IsString()
+  @IsOptional()
   paymentMethodId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Number of seats',
-    example: 20,
-    minimum: 1,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  seats?: number;
-
-  @ApiPropertyOptional({
-    description: 'Enable/disable auto-renewal',
-    example: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  autoRenew?: boolean;
 }
-

@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { StripeService } from './stripe.service';
-import { InvoiceDto, InvoiceLineItemDto, InvoiceQueryParams } from './dto/invoice.dto';
-import Stripe from 'stripe';
+import { InvoiceDto, QueryInvoicesDto, InvoiceStatus } from './dto';
 
 @Injectable()
 export class InvoiceService {
@@ -14,158 +13,244 @@ export class InvoiceService {
   ) {}
 
   /**
-   * List invoices for a tenant
+   * Get invoice by ID
    */
-  async listInvoices(
+  async getInvoice(
     tenantId: string,
-    queryParams?: InvoiceQueryParams,
-  ): Promise<InvoiceDto[]> {
-    try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
+    userId: string,
+    invoiceId: string,
+  ): Promise<InvoiceDto> {
+    // Find billing record
+    const billing = await this.prisma.billing.findFirst({
+      where: {
+        id: invoiceId,
+        tenantId,
+        userId,
+      },
+    });
 
-      if (!tenant) {
-        throw new NotFoundException('Tenant not found');
-      }
-
-      const stripeCustomerId = tenant.settings?.['stripeCustomerId'] as string;
-
-      if (!stripeCustomerId) {
-        return [];
-      }
-
-      const stripeInvoices = await this.stripeService.listInvoices({
-        customerId: stripeCustomerId,
-        limit: queryParams?.limit || 10,
-        status: queryParams?.status,
-      });
-
-      return stripeInvoices.map(invoice => this.mapStripeInvoiceToDto(invoice));
-    } catch (error) {
-      this.logger.error('Failed to list invoices', error.stack);
-      throw error;
+    if (!billing) {
+      throw new NotFoundException('Invoice not found');
     }
+
+    // Map to invoice DTO
+    return this.mapBillingToInvoice(billing);
   }
 
   /**
-   * Get a specific invoice
+   * List invoices for a user
    */
-  async getInvoice(tenantId: string, invoiceId: string): Promise<InvoiceDto> {
-    try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
+  async listInvoices(
+    tenantId: string,
+    userId: string,
+    query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const { page = 1, limit = 20, status } = query;
+    const skip = (page - 1) * limit;
 
-      if (!tenant) {
-        throw new NotFoundException('Tenant not found');
-      }
+    // Build where clause
+    const where: any = {
+      tenantId,
+      userId,
+    };
 
-      const stripeInvoice = await this.stripeService.getInvoice(invoiceId);
-
-      // Verify invoice belongs to tenant's customer
-      const stripeCustomerId = tenant.settings?.['stripeCustomerId'] as string;
-      if (stripeInvoice.customer !== stripeCustomerId) {
-        throw new NotFoundException('Invoice not found');
-      }
-
-      return this.mapStripeInvoiceToDto(stripeInvoice);
-    } catch (error) {
-      this.logger.error('Failed to get invoice', error.stack);
-      throw error;
+    if (status) {
+      where.status = this.mapInvoiceStatusToBillingStatus(status);
     }
+
+    // Get invoices and total count
+    const [billings, total] = await Promise.all([
+      this.prisma.billing.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.billing.count({ where }),
+    ]);
+
+    // Map to invoice DTOs
+    const invoices = billings.map((billing) => this.mapBillingToInvoice(billing));
+
+    return {
+      invoices,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * List all invoices for a tenant (admin only)
+   */
+  async listTenantInvoices(
+    tenantId: string,
+    query: QueryInvoicesDto,
+  ): Promise<{
+    invoices: InvoiceDto[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const { page = 1, limit = 20, status } = query;
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      tenantId,
+    };
+
+    if (status) {
+      where.status = this.mapInvoiceStatusToBillingStatus(status);
+    }
+
+    // Get invoices and total count
+    const [billings, total] = await Promise.all([
+      this.prisma.billing.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.billing.count({ where }),
+    ]);
+
+    // Map to invoice DTOs
+    const invoices = billings.map((billing) => this.mapBillingToInvoice(billing));
+
+    return {
+      invoices,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
    * Download invoice PDF
    */
-  async downloadInvoice(tenantId: string, invoiceId: string): Promise<string> {
-    try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
+  async downloadInvoice(
+    tenantId: string,
+    userId: string,
+    invoiceId: string,
+  ): Promise<{ url: string }> {
+    // Find billing record
+    const billing = await this.prisma.billing.findFirst({
+      where: {
+        id: invoiceId,
+        tenantId,
+        userId,
+      },
+    });
 
-      if (!tenant) {
-        throw new NotFoundException('Tenant not found');
-      }
-
-      const stripeInvoice = await this.stripeService.getInvoice(invoiceId);
-
-      // Verify invoice belongs to tenant's customer
-      const stripeCustomerId = tenant.settings?.['stripeCustomerId'] as string;
-      if (stripeInvoice.customer !== stripeCustomerId) {
-        throw new NotFoundException('Invoice not found');
-      }
-
-      return stripeInvoice.invoice_pdf || '';
-    } catch (error) {
-      this.logger.error('Failed to download invoice', error.stack);
-      throw error;
+    if (!billing) {
+      throw new NotFoundException('Invoice not found');
     }
-  }
 
-  /**
-   * Get upcoming invoice (preview of next billing cycle)
-   */
-  async getUpcomingInvoice(tenantId: string): Promise<InvoiceDto | null> {
-    try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
+    // In production, retrieve actual Stripe invoice
+    // const stripeInvoice = await this.stripeService.retrieveInvoice(billing.stripeInvoiceId);
+    // return { url: stripeInvoice.invoice_pdf };
 
-      if (!tenant) {
-        throw new NotFoundException('Tenant not found');
-      }
-
-      const stripeCustomerId = tenant.settings?.['stripeCustomerId'] as string;
-
-      if (!stripeCustomerId) {
-        return null;
-      }
-
-      // Get upcoming invoice from Stripe
-      const stripeInvoice = await this.stripeService['stripe'].invoices.retrieveUpcoming({
-        customer: stripeCustomerId,
-      });
-
-      return this.mapStripeInvoiceToDto(stripeInvoice);
-    } catch (error) {
-      // If there's no upcoming invoice, return null instead of throwing
-      if (error.code === 'invoice_upcoming_none') {
-        return null;
-      }
-      
-      this.logger.error('Failed to get upcoming invoice', error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Map Stripe invoice to DTO
-   */
-  private mapStripeInvoiceToDto(invoice: Stripe.Invoice): InvoiceDto {
-    const lineItems: InvoiceLineItemDto[] = invoice.lines.data.map(line => ({
-      description: line.description || '',
-      quantity: line.quantity || 0,
-      unitAmount: line.price?.unit_amount || 0,
-      amount: line.amount,
-    }));
-
+    // Mock response
     return {
-      id: invoice.id,
-      invoiceNumber: invoice.number || invoice.id,
-      status: invoice.status || 'draft',
-      amount: invoice.amount_due,
-      currency: invoice.currency.toUpperCase(),
-      invoiceDate: new Date(invoice.created * 1000),
-      dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
-      paidDate: invoice.status_transitions.paid_at 
-        ? new Date(invoice.status_transitions.paid_at * 1000) 
-        : undefined,
-      lineItems,
-      pdfUrl: invoice.invoice_pdf || undefined,
-      hostedUrl: invoice.hosted_invoice_url || undefined,
+      url: `https://invoice.stripe.com/i/acct_test/${invoiceId}/pdf`,
     };
   }
-}
 
+  /**
+   * Get invoice statistics for a tenant
+   */
+  async getInvoiceStatistics(tenantId: string): Promise<{
+    totalRevenue: number;
+    totalInvoices: number;
+    paidInvoices: number;
+    pendingInvoices: number;
+    failedInvoices: number;
+    averageInvoiceAmount: number;
+  }> {
+    // Get all invoices
+    const billings = await this.prisma.billing.findMany({
+      where: { tenantId },
+      select: {
+        amount: true,
+        status: true,
+      },
+    });
+
+    // Calculate statistics
+    const totalInvoices = billings.length;
+    const totalRevenue = billings.reduce((sum, b) => sum + Number(b.amount), 0);
+    const paidInvoices = billings.filter((b) => b.status === 'ACTIVE').length;
+    const pendingInvoices = billings.filter((b) => b.status === 'PAST_DUE').length;
+    const failedInvoices = billings.filter((b) => b.status === 'CANCELLED').length;
+    const averageInvoiceAmount = totalInvoices > 0 ? totalRevenue / totalInvoices : 0;
+
+    return {
+      totalRevenue,
+      totalInvoices,
+      paidInvoices,
+      pendingInvoices,
+      failedInvoices,
+      averageInvoiceAmount,
+    };
+  }
+
+  /**
+   * Private helper methods
+   */
+  private mapBillingToInvoice(billing: any): InvoiceDto {
+    return {
+      id: billing.id,
+      billingId: billing.id,
+      amount: Math.round(Number(billing.amount) * 100), // Convert to cents
+      currency: billing.currency,
+      status: this.mapBillingStatusToInvoiceStatus(billing.status),
+      stripeInvoiceId: undefined, // Would be stored in production
+      invoiceUrl: `https://invoice.stripe.com/i/acct_test/${billing.id}`,
+      createdAt: billing.createdAt,
+      dueDate: billing.periodEnd,
+    };
+  }
+
+  private mapBillingStatusToInvoiceStatus(status: string): InvoiceStatus {
+    const mapping: Record<string, InvoiceStatus> = {
+      ACTIVE: InvoiceStatus.PAID,
+      CANCELLED: InvoiceStatus.FAILED,
+      EXPIRED: InvoiceStatus.FAILED,
+      PAST_DUE: InvoiceStatus.PENDING,
+    };
+
+    return mapping[status] || InvoiceStatus.PENDING;
+  }
+
+  private mapInvoiceStatusToBillingStatus(status: InvoiceStatus): string {
+    const mapping: Record<InvoiceStatus, string> = {
+      [InvoiceStatus.PAID]: 'ACTIVE',
+      [InvoiceStatus.FAILED]: 'CANCELLED',
+      [InvoiceStatus.PENDING]: 'PAST_DUE',
+      [InvoiceStatus.DRAFT]: 'ACTIVE',
+      [InvoiceStatus.REFUNDED]: 'CANCELLED',
+    };
+
+    return mapping[status];
+  }
+}

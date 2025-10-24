@@ -1,75 +1,119 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Decimal } from '@prisma/client/runtime/library';
+import { IsDate, IsEnum, IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
-export class InvoiceLineItemDto {
-  @ApiProperty({ description: 'Description of the line item' })
-  description: string;
-
-  @ApiProperty({ description: 'Quantity', example: 1 })
-  quantity: number;
-
-  @ApiProperty({ description: 'Unit amount in cents', example: 2999 })
-  unitAmount: number;
-
-  @ApiProperty({ description: 'Total amount in cents', example: 2999 })
-  amount: number;
+export enum InvoiceStatus {
+  DRAFT = 'DRAFT',
+  PAID = 'PAID',
+  PENDING = 'PENDING',
+  FAILED = 'FAILED',
+  REFUNDED = 'REFUNDED',
 }
 
 export class InvoiceDto {
-  @ApiProperty({ description: 'Invoice ID', example: 'inv_1234567890' })
+  @ApiProperty({
+    description: 'Invoice ID',
+    example: 'inv_1234567890',
+  })
+  @IsString()
   id: string;
 
-  @ApiProperty({ description: 'Invoice number', example: 'INV-2024-001' })
-  invoiceNumber: string;
+  @ApiProperty({
+    description: 'Billing ID',
+    example: 'bill_1234567890',
+  })
+  @IsString()
+  billingId: string;
 
-  @ApiProperty({ description: 'Status', example: 'paid' })
-  status: string;
-
-  @ApiProperty({ description: 'Amount in cents', example: 2999 })
+  @ApiProperty({
+    description: 'Invoice amount in cents',
+    example: 2999,
+  })
+  @IsInt()
+  @Min(0)
   amount: number;
 
-  @ApiProperty({ description: 'Currency', example: 'USD' })
+  @ApiProperty({
+    description: 'Currency code',
+    example: 'USD',
+  })
+  @IsString()
   currency: string;
 
-  @ApiProperty({ description: 'Invoice date' })
-  invoiceDate: Date;
+  @ApiProperty({
+    description: 'Invoice status',
+    enum: InvoiceStatus,
+    example: InvoiceStatus.PAID,
+  })
+  @IsEnum(InvoiceStatus)
+  status: InvoiceStatus;
 
-  @ApiPropertyOptional({ description: 'Due date' })
+  @ApiProperty({
+    description: 'Stripe invoice ID',
+    example: 'in_1234567890',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  stripeInvoiceId?: string;
+
+  @ApiProperty({
+    description: 'Invoice PDF URL',
+    example: 'https://invoice.stripe.com/i/acct_.../test_...',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  invoiceUrl?: string;
+
+  @ApiProperty({
+    description: 'Invoice created date',
+    example: '2024-01-15T10:30:00Z',
+  })
+  @IsDate()
+  @Type(() => Date)
+  createdAt: Date;
+
+  @ApiProperty({
+    description: 'Invoice due date',
+    example: '2024-02-15T10:30:00Z',
+    required: false,
+  })
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
   dueDate?: Date;
-
-  @ApiPropertyOptional({ description: 'Paid date' })
-  paidDate?: Date;
-
-  @ApiProperty({ description: 'Line items', type: [InvoiceLineItemDto] })
-  lineItems: InvoiceLineItemDto[];
-
-  @ApiPropertyOptional({ description: 'PDF URL' })
-  pdfUrl?: string;
-
-  @ApiPropertyOptional({ description: 'Hosted invoice URL' })
-  hostedUrl?: string;
 }
 
-export class CreateInvoiceDto {
-  @ApiProperty({ description: 'Customer description' })
-  description: string;
+export class QueryInvoicesDto {
+  @ApiProperty({
+    description: 'Filter by invoice status',
+    enum: InvoiceStatus,
+    required: false,
+  })
+  @IsEnum(InvoiceStatus)
+  @IsOptional()
+  status?: InvoiceStatus;
 
-  @ApiProperty({ description: 'Amount in cents', example: 2999 })
-  amount: number;
+  @ApiProperty({
+    description: 'Page number for pagination',
+    example: 1,
+    required: false,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  page?: number = 1;
 
-  @ApiProperty({ description: 'Currency', example: 'USD', default: 'USD' })
-  currency: string;
-
-  @ApiPropertyOptional({ description: 'Due date in days', example: 30 })
-  dueInDays?: number;
-
-  @ApiProperty({ description: 'Line items', type: [InvoiceLineItemDto] })
-  lineItems: InvoiceLineItemDto[];
+  @ApiProperty({
+    description: 'Number of items per page',
+    example: 20,
+    required: false,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number = 20;
 }
-
-export interface InvoiceQueryParams {
-  status?: 'draft' | 'open' | 'paid' | 'void' | 'uncollectible';
-  limit?: number;
-  startingAfter?: string;
-}
-
