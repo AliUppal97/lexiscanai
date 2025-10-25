@@ -1,0 +1,107 @@
+# Filebeat Configuration for LexiScan AI
+#
+# Purpose:
+# - Collects logs from Docker containers
+# - Ships logs to Logstash
+# - Monitors log files
+# - Handles log rotation
+#
+# Features:
+# - Docker log collection
+# - Log parsing
+# - Multi-line handling
+# - Error recovery
+
+filebeat.inputs:
+  # Docker container logs
+  - type: container
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      - add_kubernetes_metadata:
+          in_cluster: false
+          host: "minikube"
+          kube_config: "/home/user/.kube/config"
+    fields:
+      service_type: "container"
+      environment: "development"
+    fields_under_root: true
+    multiline.pattern: '^\d{4}-\d{2}-\d{2}'
+    multiline.negate: true
+    multiline.match: after
+
+  # Application log files
+  - type: log
+    enabled: true
+    paths:
+      - '/app/logs/*.log'
+      - '/app/logs/*.json'
+    fields:
+      service_type: "application"
+      environment: "development"
+    fields_under_root: true
+    json.keys_under_root: true
+    json.add_error_key: true
+    multiline.pattern: '^\d{4}-\d{2}-\d{2}'
+    multiline.negate: true
+    multiline.match: after
+
+  # System logs
+  - type: log
+    enabled: true
+    paths:
+      - '/var/log/syslog'
+      - '/var/log/auth.log'
+    fields:
+      service_type: "system"
+      environment: "development"
+    fields_under_root: true
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+
+# Output configuration
+output.logstash:
+  hosts: ["logstash:5044"]
+  bulk_max_size: 1024
+  timeout: 30s
+
+# Logging configuration
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+# Monitoring
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+
+# Setup
+setup.template.enabled: true
+setup.template.name: "lexiscan-logs"
+setup.template.pattern: "logstash-lexiscan-*"
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 0
+  index.refresh_interval: 5s
+
+# Kibana
+setup.kibana:
+  host: "kibana:5601"
+
+# ILM (Index Lifecycle Management)
+setup.ilm.enabled: true
+setup.ilm.rollover_alias: "lexiscan-logs"
+setup.ilm.pattern: "{now/d}-000001"
+setup.ilm.policy: "lexiscan-policy"

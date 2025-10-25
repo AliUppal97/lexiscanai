@@ -1,0 +1,24 @@
+# Grafana Dashboard Provisioning
+#
+# Purpose:
+# - Automatically loads dashboards
+# - Configures dashboard sources
+# - Sets up folder structure
+#
+# Features:
+# - Auto-discovery of dashboards
+# - Folder organization
+# - Permission management
+
+apiVersion: 1
+
+providers:
+  - name: 'LexiScan Dashboards'
+    orgId: 1
+    folder: 'LexiScan AI'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

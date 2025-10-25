@@ -17,8 +17,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - app-network
+      - monitoring-network
 
-  # Redis Cache
+  # Redis Cache & Message Queue
   redis:
     image: redis:7-alpine
     ports:
@@ -30,6 +33,31 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - app-network
+      - monitoring-network
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+  # RabbitMQ Message Queue (Alternative to Redis for complex messaging)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: lexiscan
+      RABBITMQ_DEFAULT_PASS: lexiscan_password
+      RABBITMQ_DEFAULT_VHOST: lexiscan
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+      - monitoring-network
 
   # NestJS API
   api:
@@ -44,17 +72,33 @@ services:
       DATABASE_URL: postgresql://lexiscan:lexiscan_password@postgres:5432/lexiscan
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://lexiscan:lexiscan_password@rabbitmq:5672/lexiscan
       JWT_SECRET: your_jwt_secret_here
       CORS_ORIGIN: http://localhost:3000
+      # Observability
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      LOG_LEVEL: info
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./apps/api:/app
       - /app/node_modules
     command: npm run start:dev
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=3001"
+      - "prometheus.io/path=/metrics"
 
   # Next.js Web App
   web:
@@ -66,10 +110,21 @@ services:
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      # Observability
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
     volumes:
       - ./apps/web:/app
       - /app/node_modules
     command: npm run dev
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=3000"
+      - "prometheus.io/path=/metrics"
 
   # React Dashboard
   dashboard:
@@ -81,10 +136,21 @@ services:
     environment:
       NODE_ENV: development
       VITE_API_URL: http://localhost:3001/api
+      # Observability
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
     volumes:
       - ./apps/dashboard:/app
       - /app/node_modules
     command: npm run dev
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=3002"
+      - "prometheus.io/path=/metrics"
 
   # AI Worker Service
   ai-worker:
@@ -96,15 +162,31 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://lexiscan:lexiscan_password@rabbitmq:5672/lexiscan
       OPENAI_API_KEY: your_openai_api_key_here
       PINECONE_API_KEY: your_pinecone_api_key_here
+      # Observability
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      LOG_LEVEL: info
     depends_on:
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./services/ai-worker:/app
       - /app/__pycache__
     command: python main.py
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=8000"
+      - "prometheus.io/path=/metrics"
 
   # PDF Generator Service
   pdf-generator:
@@ -116,13 +198,29 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://lexiscan:lexiscan_password@rabbitmq:5672/lexiscan
+      # Observability
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      LOG_LEVEL: info
     depends_on:
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./services/pdf-generator:/app
       - /app/__pycache__
     command: python main.py
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=8001"
+      - "prometheus.io/path=/metrics"
 
   # Nginx Reverse Proxy
   nginx:
@@ -139,11 +237,287 @@ services:
       - dashboard
       - ai-worker
       - pdf-generator
+    networks:
+      - app-network
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=80"
+      - "prometheus.io/path=/metrics"
+
+  # ===========================================
+  # OBSERVABILITY & MONITORING STACK
+  # ===========================================
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana - Dashboards & Visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3003:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-worldmap-panel,grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - elasticsearch
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Jaeger - Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # HTTP collector
+      - "6831:6831/udp"  # UDP agent
+      - "6832:6832/udp"  # UDP agent
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+      COLLECTOR_ZIPKIN_HOST_PORT: :9411
+    volumes:
+      - jaeger_data:/tmp
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Elasticsearch - Log Storage & Search
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: false
+      xpack.security.enrollment.enabled: false
+      "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      cluster.name: lexiscan-cluster
+      node.name: lexiscan-node
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kibana - Log Visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+    depends_on:
+      - elasticsearch
+    volumes:
+      - ./monitoring/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Logstash - Log Processing
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    ports:
+      - "5044:5044"  # Beats input
+      - "5000:5000/tcp"  # TCP input
+      - "5000:5000/udp"  # UDP input
+      - "9600:9600"  # Logstash API
+    environment:
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    volumes:
+      - ./monitoring/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./monitoring/logstash/config:/usr/share/logstash/config
+    depends_on:
+      - elasticsearch
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Filebeat - Log Shipper
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    user: root
+    volumes:
+      - ./monitoring/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat_data:/usr/share/filebeat/data
+    depends_on:
+      - logstash
+    networks:
+      - monitoring-network
+    command: filebeat -e -strict.perms=false
+
+  # Node Exporter - System Metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=9100"
+      - "prometheus.io/path=/metrics"
+
+  # cAdvisor - Container Metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=8080"
+      - "prometheus.io/path=/metrics"
+
+  # Redis Exporter - Redis Metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=9121"
+      - "prometheus.io/path=/metrics"
+
+  # PostgreSQL Exporter - Database Metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: postgresql://lexiscan:lexiscan_password@postgres:5432/lexiscan?sslmode=disable
+    depends_on:
+      - postgres
+    networks:
+      - monitoring-network
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=9187"
+      - "prometheus.io/path=/metrics"
+
+  # AlertManager - Alert Management
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================
+  # VOLUMES & NETWORKS
+  # ===========================================
 
 volumes:
+  # Application Data
   postgres_data:
   redis_data:
+  rabbitmq_data:
+  
+  # Monitoring Data
+  prometheus_data:
+  grafana_data:
+  jaeger_data:
+  elasticsearch_data:
+  filebeat_data:
+  alertmanager_data:
 
 networks:
-  default:
+  app-network:
     driver: bridge
+    name: lexiscan-app-network
+  monitoring-network:
+    driver: bridge
+    name: lexiscan-monitoring-network

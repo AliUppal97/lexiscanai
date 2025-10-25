@@ -1,0 +1,209 @@
+# AlertManager Configuration for LexiScan AI
+#
+# Purpose:
+# - Routes alerts to appropriate channels
+# - Groups related alerts
+# - Implements alert suppression
+# - Manages notification templates
+#
+# Features:
+# - Multi-channel routing (Slack, Email, PagerDuty)
+# - Alert grouping and deduplication
+# - Silence management
+# - Template customization
+
+global:
+  # Global SMTP configuration
+  smtp_smarthost: 'smtp.sendgrid.net:587'
+  smtp_from: 'alerts@lexiscan.ai'
+  smtp_auth_username: 'apikey'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+  
+  # Global Slack configuration
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  
+  # Resolve timeout
+  resolve_timeout: 5m
+
+# Route configuration
+route:
+  # Group alerts by service and severity
+  group_by: ['alertname', 'service', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  
+  # Default receiver
+  receiver: 'default'
+  
+  # Route rules
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 0s
+      repeat_interval: 5m
+    
+    # Database alerts
+    - match:
+        alertname: PostgreSQLDown
+      receiver: 'database-team'
+      group_wait: 0s
+      repeat_interval: 1h
+    
+    # Security alerts
+    - match:
+        alertname: HighFailedLoginAttempts
+      receiver: 'security-team'
+      group_wait: 0s
+      repeat_interval: 30m
+    
+    # Performance alerts
+    - match:
+        severity: warning
+      receiver: 'performance-alerts'
+      group_wait: 30s
+      repeat_interval: 2h
+
+# Inhibit rules (suppress certain alerts when others are firing)
+inhibit_rules:
+  # Suppress warning alerts when critical alerts are firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service']
+  
+  # Suppress container alerts when node is down
+  - source_match:
+      alertname: 'NodeDown'
+    target_match_re:
+      alertname: 'Container.*'
+    equal: ['instance']
+
+# Receiver configurations
+receivers:
+  # Default receiver
+  - name: 'default'
+    email_configs:
+      - to: 'ops@lexiscan.ai'
+        subject: 'LexiScan Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Service: {{ .Labels.service }}
+          Instance: {{ .Labels.instance }}
+          {{ end }}
+  
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'oncall@lexiscan.ai'
+        subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          🚨 CRITICAL ALERT 🚨
+          
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Service: {{ .Labels.service }}
+          Instance: {{ .Labels.instance }}
+          
+          Runbook: {{ .Annotations.runbook_url }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#alerts-critical'
+        title: '🚨 Critical Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          Service: {{ .Labels.service }}
+          Severity: {{ .Labels.severity }}
+          {{ end }}
+        send_resolved: true
+    
+    # PagerDuty integration (if configured)
+    # pagerduty_configs:
+    #   - service_key: '${PAGERDUTY_SERVICE_KEY}'
+    #     description: '{{ .GroupLabels.alertname }}'
+    #     details:
+    #       summary: '{{ .Annotations.summary }}'
+    #       description: '{{ .Annotations.description }}'
+  
+  # Database team alerts
+  - name: 'database-team'
+    email_configs:
+      - to: 'dba@lexiscan.ai'
+        subject: 'Database Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Database Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#database-alerts'
+        title: 'Database Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+  
+  # Security team alerts
+  - name: 'security-team'
+    email_configs:
+      - to: 'security@lexiscan.ai'
+        subject: '🔒 Security Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          🔒 SECURITY ALERT 🔒
+          
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#security-alerts'
+        title: '🔒 Security Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+  
+  # Performance alerts
+  - name: 'performance-alerts'
+    email_configs:
+      - to: 'performance@lexiscan.ai'
+        subject: 'Performance Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Performance Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#performance-alerts'
+        title: 'Performance Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+
+# Template configuration
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

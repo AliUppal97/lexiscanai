@@ -1,0 +1,140 @@
+# Prometheus Configuration for LexiScan AI
+#
+# Purpose:
+# - Collects metrics from all services
+# - Configures scraping targets
+# - Sets up alerting rules
+# - Manages data retention
+#
+# Features:
+# - Service discovery
+# - Multi-target scraping
+# - Alert rule evaluation
+# - Federation support
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'lexiscan-local'
+    environment: 'development'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Rule files
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter - System metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 5s
+    metrics_path: /metrics
+
+  # cAdvisor - Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 5s
+    metrics_path: /metrics
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 10s
+
+  # PostgreSQL Exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 10s
+
+  # Application Services
+  - job_name: 'lexiscan-api'
+    static_configs:
+      - targets: ['api:3001']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: 'lexiscan-web'
+    static_configs:
+      - targets: ['web:3000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: 'lexiscan-dashboard'
+    static_configs:
+      - targets: ['dashboard:3002']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: 'lexiscan-ai-worker'
+    static_configs:
+      - targets: ['ai-worker:8000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: 'lexiscan-pdf-generator'
+    static_configs:
+      - targets: ['pdf-generator:8001']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Nginx metrics (if nginx-prometheus-exporter is used)
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+    metrics_path: /nginx_status
+    scrape_interval: 10s
+
+  # Docker service discovery
+  - job_name: 'docker'
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        target_label: container_name
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service_name
+
+# Storage configuration
+storage:
+  tsdb:
+    retention.time: 15d
+    retention.size: 10GB
+    path: /prometheus
+
+# Remote write configuration (for long-term storage)
+# remote_write:
+#   - url: "https://prometheus-remote-write-endpoint/api/v1/write"
+#     basic_auth:
+#       username: "username"
+#       password: "password"
+
+# Federation configuration (if needed)
+# - job_name: 'federate'
+#   scrape_interval: 15s
+#   honor_labels: true
+#   metrics_path: '/federate'
+#   params:
+#     'match[]':
+#       - '{job=~"lexiscan-.*"}'
+#   static_configs:
+#     - targets:
+#       - 'prometheus:9090'

@@ -1,0 +1,237 @@
+# LexiScan AI Alert Rules
+#
+# Purpose:
+# - Defines alerting rules for application monitoring
+# - Sets thresholds for critical metrics
+# - Configures alert severity levels
+#
+# Alert Categories:
+# - Application Health
+# - Performance Metrics
+# - Resource Utilization
+# - Error Rates
+# - Database Health
+
+groups:
+  # Application Health Alerts
+  - name: lexiscan.application.health
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"lexiscan-.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} has been down for more than 1 minute"
+          runbook_url: "https://docs.lexiscan.ai/runbooks/service-down"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for service {{ $labels.job }}"
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }}s for service {{ $labels.job }}"
+
+  # Performance Metrics
+  - name: lexiscan.performance
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space is low"
+          description: "Disk space is {{ $value }}% available on {{ $labels.instance }}"
+
+  # Database Health Alerts
+  - name: lexiscan.database
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High PostgreSQL connection usage"
+          description: "PostgreSQL connection usage is {{ $value }}%"
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_statements_mean_exec_time[5m]) > 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow PostgreSQL queries detected"
+          description: "Average query execution time is {{ $value }}s"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is {{ $value }}%"
+
+  # Container Health Alerts
+  - name: lexiscan.containers
+    rules:
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container high CPU usage"
+          description: "Container {{ $labels.name }} CPU usage is {{ $value }}%"
+
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container high memory usage"
+          description: "Container {{ $labels.name }} memory usage is {{ $value }}%"
+
+      - alert: ContainerRestarting
+        expr: rate(container_start_time_seconds[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restarting frequently"
+          description: "Container {{ $labels.name }} is restarting frequently"
+
+  # Business Logic Alerts
+  - name: lexiscan.business
+    rules:
+      - alert: HighDocumentProcessingTime
+        expr: histogram_quantile(0.95, rate(document_processing_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Document processing is slow"
+          description: "95th percentile document processing time is {{ $value }}s"
+
+      - alert: LowDocumentProcessingThroughput
+        expr: rate(documents_processed_total[5m]) < 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low document processing throughput"
+          description: "Document processing rate is {{ $value }} documents/second"
+
+      - alert: HighQueueLength
+        expr: redis_list_length{list="document-processing-queue"} > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High queue length"
+          description: "Document processing queue has {{ $value }} items"
+
+  # Security Alerts
+  - name: lexiscan.security
+    rules:
+      - alert: HighFailedLoginAttempts
+        expr: rate(login_attempts_total{status="failed"}[5m]) > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High failed login attempts"
+          description: "{{ $value }} failed login attempts per second"
+
+      - alert: SuspiciousAPIUsage
+        expr: rate(api_requests_total{status="401"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Suspicious API usage detected"
+          description: "High rate of 401 responses: {{ $value }} per second"
+
+  # Infrastructure Alerts
+  - name: lexiscan.infrastructure
+    rules:
+      - alert: ElasticsearchDown
+        expr: up{job="elasticsearch"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch is down"
+          description: "Elasticsearch cluster is not responding"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus is down"
+          description: "Prometheus monitoring is not responding"
+
+      - alert: GrafanaDown
+        expr: up{job="grafana"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Grafana is down"
+          description: "Grafana dashboards are not accessible"
