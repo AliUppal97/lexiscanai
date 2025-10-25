@@ -22,6 +22,9 @@ import { CacheService } from '../../services/cache.service';
 import { QueueService } from '../../services/queue.service';
 import { PrismaService } from '../../common/prisma.service';
 
+// Controller
+import { CommunicationsController } from './communications.controller';
+
 /**
  * Communications Module for LexiScan AI
  * 
@@ -53,7 +56,7 @@ import { PrismaService } from '../../common/prisma.service';
       },
     }),
   ],
-  controllers: [],
+  controllers: [CommunicationsController],
   providers: [
     // Core Services
     PrismaService,

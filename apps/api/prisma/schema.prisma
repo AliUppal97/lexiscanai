@@ -45,6 +45,14 @@ model Tenant {
   mfaDevices      MfaDevice[]
   ssoProviders    SsoProvider[]
   invitations     Invitation[]
+  // Communication relations
+  emails          Email[]
+  notifications   Notification[]
+  notificationPreferences NotificationPreferences[]
+  deviceTokens    DeviceToken[]
+  pushNotifications PushNotification[]
+  smsNotifications SmsNotification[]
+  webhooks        Webhook[]
 
   @@map("tenants")
   @@index([slug])
@@ -87,6 +95,12 @@ model User {
   mfaDevices        MfaDevice[]
   invitations       Invitation[]
   createdInvitations Invitation[] @relation("InvitationCreatedBy")
+  // Communication relations
+  notifications     Notification[]
+  notificationPreferences NotificationPreferences[]
+  deviceTokens      DeviceToken[]
+  pushNotifications PushNotification[]
+  smsNotifications  SmsNotification[]
 
   @@unique([email, tenantId]) // Email unique per tenant
   @@map("users")
@@ -457,4 +471,320 @@ enum BillingStatus {
   CANCELLED
   EXPIRED
   PAST_DUE
+}
+
+// ============================================================================
+// COMMUNICATION MODULE ENTITIES
+// ============================================================================
+
+// Email: Email tracking and analytics
+model Email {
+  id          String      @id @default(cuid())
+  tenantId    String
+  messageId   String?     @unique
+  subject     String
+  recipients  Json        // Array of recipient objects
+  status      EmailStatus @default(PENDING)
+  template    String?
+  priority    EmailPriority @default(NORMAL)
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  bouncedAt   DateTime?
+  error       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("emails")
+  @@index([tenantId, status])
+  @@index([tenantId, sentAt])
+  @@index([messageId])
+}
+
+// Notification: In-app notifications
+model Notification {
+  id          String             @id @default(cuid())
+  tenantId    String
+  userId      String
+  title       String
+  message     String
+  type        NotificationType
+  status      NotificationStatus @default(PENDING)
+  priority    NotificationPriority @default(NORMAL)
+  data        Json?
+  actionUrl   String?
+  actionText  String?
+  persistent  Boolean            @default(false)
+  silent      Boolean            @default(false)
+  readAt      DateTime?
+  scheduledAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  // Relations
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([tenantId, userId, status])
+  @@index([tenantId, type])
+  @@index([userId, readAt])
+}
+
+// NotificationPreferences: User notification preferences
+model NotificationPreferences {
+  id            String            @id @default(cuid())
+  tenantId      String
+  userId        String
+  inAppEnabled  Boolean           @default(true)
+  emailEnabled  Boolean           @default(true)
+  pushEnabled   Boolean           @default(true)
+  smsEnabled    Boolean           @default(false)
+  webhookEnabled Boolean          @default(false)
+  enabledTypes  NotificationType[]
+  disabledTypes NotificationType[]
+  quietHoursStart String?         // HH:mm format
+  quietHoursEnd   String?         // HH:mm format
+  quietDays      String[]         // ['monday', 'tuesday', etc.]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // Relations
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("notification_preferences")
+}
+
+// DeviceToken: Push notification device tokens
+model DeviceToken {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  token       String
+  platform    String   // 'ios', 'android', 'web'
+  deviceId    String?
+  appVersion  String?
+  osVersion   String?
+  model       String?
+  isActive    Boolean  @default(true)
+  lastUsed    DateTime @default(now())
+  deactivatedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, token])
+  @@map("device_tokens")
+  @@index([tenantId, userId, isActive])
+}
+
+// PushNotification: Push notification tracking
+model PushNotification {
+  id          String             @id @default(cuid())
+  tenantId    String
+  userId      String
+  title       String
+  message     String
+  type        NotificationType
+  deviceToken String
+  platform    String
+  messageId   String?
+  status      String             @default("pending")
+  sentAt      DateTime           @default(now())
+  deliveredAt DateTime?
+  error       String?
+
+  // Relations
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_notifications")
+  @@index([tenantId, userId])
+  @@index([messageId])
+}
+
+// SmsNotification: SMS notification tracking
+model SmsNotification {
+  id          String             @id @default(cuid())
+  tenantId    String
+  userId      String
+  title       String
+  message     String
+  type        NotificationType
+  phoneNumber String
+  provider    String             // 'twilio', 'aws-sns'
+  messageId   String?
+  status      String             @default("pending")
+  cost        Decimal?           @db.Decimal(10, 4)
+  sentAt      DateTime           @default(now())
+  deliveredAt DateTime?
+  error       String?
+
+  // Relations
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sms_notifications")
+  @@index([tenantId, userId])
+  @@index([messageId])
+}
+
+// Webhook: Webhook endpoint configuration
+model Webhook {
+  id            String        @id @default(cuid())
+  tenantId      String
+  name          String
+  url           String
+  events        WebhookEvent[]
+  secret        String
+  headers       Json?         // Array of header objects
+  isActive      Boolean       @default(true)
+  timeout       Int           @default(30000)
+  retryAttempts Int           @default(3)
+  retryDelay    Int           @default(5000)
+  description   String?
+  filters       Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries    WebhookDelivery[]
+
+  @@map("webhooks")
+  @@index([tenantId, isActive])
+}
+
+// WebhookDelivery: Webhook delivery tracking
+model WebhookDelivery {
+  id              String        @id @default(cuid())
+  webhookId       String
+  event           WebhookEvent
+  payload         Json
+  status          DeliveryStatus @default(PENDING)
+  responseCode    Int?
+  responseBody    String?
+  errorMessage    String?
+  attemptCount    Int           @default(0)
+  maxAttempts     Int           @default(3)
+  nextRetryAt     DateTime?
+  deliveredAt     DateTime?
+  movedToDeadLetter Boolean     @default(false)
+  movedToDeadLetterAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  webhook         Webhook       @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_deliveries")
+  @@index([webhookId, status])
+  @@index([status, nextRetryAt])
+}
+
+// WebhookDeadLetter: Failed webhook deliveries
+model WebhookDeadLetter {
+  id                String        @id @default(cuid())
+  webhookId         String
+  event             WebhookEvent
+  payload           Json
+  originalDeliveryId String
+  failureReason     String
+  movedAt           DateTime      @default(now())
+  reprocessed       Boolean       @default(false)
+  reprocessedAt     DateTime?
+
+  // Relations
+  webhook           Webhook       @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_dead_letter")
+  @@index([webhookId, movedAt])
+}
+
+// ============================================================================
+// COMMUNICATION ENUMS
+// ============================================================================
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+  DELIVERED
+  OPENED
+  CLICKED
+}
+
+enum EmailPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  DOCUMENT_PROCESSED
+  DOCUMENT_FAILED
+  REVIEW_COMPLETED
+  INVOICE_GENERATED
+  SUBSCRIPTION_EXPIRING
+  TEAM_INVITATION
+  SYSTEM_ALERT
+  SECURITY_ALERT
+  BILLING_ALERT
+  FEATURE_UPDATE
+  MAINTENANCE_NOTICE
+  CUSTOM
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum WebhookEvent {
+  DOCUMENT_PROCESSED
+  DOCUMENT_FAILED
+  USER_CREATED
+  USER_UPDATED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELLED
+  INVOICE_CREATED
+  INVOICE_PAID
+  PAYMENT_FAILED
+  TEAM_INVITATION_SENT
+  TEAM_INVITATION_ACCEPTED
+  SECURITY_ALERT
+  SYSTEM_MAINTENANCE
+  CUSTOM
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  RETRYING
+  EXPIRED
 }
