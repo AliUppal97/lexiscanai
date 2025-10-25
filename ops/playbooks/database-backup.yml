@@ -1,0 +1,454 @@
+---
+# LexiScan AI - Database Backup Playbook
+# Purpose: Automated database backup procedures
+# Author: LexiScan AI Platform Team
+# Version: 1.0.0
+
+name: "Database Backup"
+description: "Automated playbook for database backup procedures"
+version: "1.0.0"
+
+# Playbook metadata
+metadata:
+  author: "LexiScan AI Platform Team"
+  created: "2024-12-01"
+  updated: "2024-12-01"
+  tags: ["backup", "database", "automation", "maintenance"]
+  priority: "high"
+
+# Playbook variables
+variables:
+  backup_type: "{{ backup_type | default('full') }}"
+  backup_retention: "{{ backup_retention | default(30) }}"
+  backup_compression: "{{ backup_compression | default(true) }}"
+  backup_encryption: "{{ backup_encryption | default(true) }}"
+  backup_location: "{{ backup_location | default('/backups') }}"
+  backup_name: "{{ backup_name | default('') }}"
+  database_name: "{{ database_name | default('lexiscan') }}"
+  database_user: "{{ database_user | default('lexiscan') }}"
+  database_host: "{{ database_host | default('postgres') }}"
+  database_port: "{{ database_port | default(5432) }}"
+
+# Playbook tasks
+tasks:
+  - name: "Validate Backup Parameters"
+    description: "Validate all required backup parameters"
+    type: "validation"
+    steps:
+      - name: "Check backup type"
+        action: "validate"
+        condition: "backup_type in ['full', 'incremental', 'differential']"
+        error_message: "Backup type must be full, incremental, or differential"
+      
+      - name: "Check backup retention"
+        action: "validate"
+        condition: "backup_retention > 0"
+        error_message: "Backup retention must be greater than 0"
+      
+      - name: "Check backup location"
+        action: "validate"
+        condition: "backup_location != ''"
+        error_message: "Backup location is required"
+      
+      - name: "Check database connection"
+        action: "database"
+        query: "SELECT 1"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        expected_result: "1"
+
+  - name: "Create Backup Directory"
+    description: "Create backup directory if it doesn't exist"
+    type: "filesystem"
+    steps:
+      - name: "Create backup directory"
+        action: "mkdir"
+        path: "{{ backup_location }}"
+        permissions: "755"
+      
+      - name: "Create backup subdirectories"
+        action: "mkdir"
+        path: "{{ backup_location }}/{{ backup_type }}"
+        permissions: "755"
+      
+      - name: "Create backup subdirectories"
+        action: "mkdir"
+        path: "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}"
+        permissions: "755"
+
+  - name: "Pre-Backup Checks"
+    description: "Perform pre-backup checks and preparations"
+    type: "database"
+    steps:
+      - name: "Check database size"
+        action: "query"
+        query: "SELECT pg_size_pretty(pg_database_size('{{ database_name }}'))"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        output_variable: "database_size"
+      
+      - name: "Check database connections"
+        action: "query"
+        query: "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = '{{ database_name }}'"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        output_variable: "active_connections"
+      
+      - name: "Check database locks"
+        action: "query"
+        query: "SELECT COUNT(*) FROM pg_locks WHERE NOT granted"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        output_variable: "active_locks"
+      
+      - name: "Check database replication lag"
+        action: "query"
+        query: "SELECT CASE WHEN pg_is_in_recovery() THEN pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_receive_lsn()) ELSE 0 END"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        output_variable: "replication_lag"
+
+  - name: "Create Full Backup"
+    description: "Create full database backup"
+    type: "database"
+    steps:
+      - name: "Create full backup"
+        action: "execute"
+        command: "pg_dump"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--format=custom"
+          - "--compress=9"
+          - "--no-owner"
+          - "--no-privileges"
+          - "--file={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+      
+      - name: "Create schema-only backup"
+        action: "execute"
+        command: "pg_dump"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--schema-only"
+          - "--no-owner"
+          - "--no-privileges"
+          - "--file={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-schema-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+      
+      - name: "Create data-only backup"
+        action: "execute"
+        command: "pg_dump"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--data-only"
+          - "--no-owner"
+          - "--no-privileges"
+          - "--file={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-data-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+
+  - name: "Create Incremental Backup"
+    description: "Create incremental database backup"
+    type: "database"
+    steps:
+      - name: "Create WAL backup"
+        action: "execute"
+        command: "pg_basebackup"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--format=tar"
+          - "--compress=gzip"
+          - "--progress"
+          - "--checkpoint=fast"
+          - "--target-gp-dir={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-incremental-{{ backup_name }}-$(date +%Y%m%d-%H%M%S)"
+        environment:
+          PGPASSWORD: "password"
+      
+      - name: "Create WAL archive"
+        action: "execute"
+        command: "pg_receivewal"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--directory={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/wal"
+          - "--synchronous"
+        environment:
+          PGPASSWORD: "password"
+
+  - name: "Create Differential Backup"
+    description: "Create differential database backup"
+    type: "database"
+    steps:
+      - name: "Create differential backup"
+        action: "execute"
+        command: "pg_dump"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--format=custom"
+          - "--compress=9"
+          - "--no-owner"
+          - "--no-privileges"
+          - "--file={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-differential-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+      
+      - name: "Create table-level backup"
+        action: "execute"
+        command: "pg_dump"
+        args:
+          - "--host={{ database_host }}"
+          - "--port={{ database_port }}"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--format=custom"
+          - "--compress=9"
+          - "--no-owner"
+          - "--no-privileges"
+          - "--table=users"
+          - "--table=documents"
+          - "--table=organizations"
+          - "--file={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-tables-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+
+  - name: "Encrypt Backup Files"
+    description: "Encrypt backup files if encryption is enabled"
+    type: "filesystem"
+    steps:
+      - name: "Encrypt backup files"
+        action: "execute"
+        command: "gpg"
+        args:
+          - "--symmetric"
+          - "--cipher-algo=AES256"
+          - "--compress-algo=1"
+          - "--batch"
+          - "--yes"
+          - "--passphrase={{ backup_encryption_key }}"
+          - "--output={{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-encrypted-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql.gpg"
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        condition: "backup_encryption == true"
+      
+      - name: "Remove unencrypted files"
+        action: "execute"
+        command: "rm"
+        args:
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        condition: "backup_encryption == true"
+
+  - name: "Compress Backup Files"
+    description: "Compress backup files if compression is enabled"
+    type: "filesystem"
+    steps:
+      - name: "Compress backup files"
+        action: "execute"
+        command: "gzip"
+        args:
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        condition: "backup_compression == true"
+      
+      - name: "Compress schema backup"
+        action: "execute"
+        command: "gzip"
+        args:
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-schema-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        condition: "backup_compression == true"
+      
+      - name: "Compress data backup"
+        action: "execute"
+        command: "gzip"
+        args:
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-data-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        condition: "backup_compression == true"
+
+  - name: "Create Backup Metadata"
+    description: "Create metadata file for the backup"
+    type: "filesystem"
+    steps:
+      - name: "Create backup metadata"
+        action: "write"
+        file: "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-metadata-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).json"
+        content: |
+          {
+            "backup_name": "{{ backup_name }}",
+            "backup_type": "{{ backup_type }}",
+            "database_name": "{{ database_name }}",
+            "database_host": "{{ database_host }}",
+            "database_port": "{{ database_port }}",
+            "backup_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "backup_size": "$(du -h {{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql | cut -f1)",
+            "database_size": "{{ database_size }}",
+            "active_connections": "{{ active_connections }}",
+            "active_locks": "{{ active_locks }}",
+            "replication_lag": "{{ replication_lag }}",
+            "compression": "{{ backup_compression }}",
+            "encryption": "{{ backup_encryption }}",
+            "retention_days": "{{ backup_retention }}",
+            "backup_files": [
+              "{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql",
+              "{{ database_name }}-schema-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql",
+              "{{ database_name }}-data-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+            ]
+          }
+
+  - name: "Verify Backup Integrity"
+    description: "Verify the integrity of the backup files"
+    type: "database"
+    steps:
+      - name: "Test backup restore"
+        action: "execute"
+        command: "pg_restore"
+        args:
+          - "--list"
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        environment:
+          PGPASSWORD: "password"
+      
+      - name: "Check backup file size"
+        action: "execute"
+        command: "ls"
+        args:
+          - "-lh"
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        output_variable: "backup_file_size"
+      
+      - name: "Check backup file permissions"
+        action: "execute"
+        command: "ls"
+        args:
+          - "-l"
+          - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}}/{{ database_name }}-full-{{ backup_name }}-$(date +%Y%m%d-%H%M%S).sql"
+        output_variable: "backup_file_permissions"
+
+  - name: "Cleanup Old Backups"
+    description: "Clean up old backup files based on retention policy"
+    type: "filesystem"
+    steps:
+      - name: "Remove old full backups"
+        action: "execute"
+        command: "find"
+        args:
+          - "{{ backup_location }}/full"
+          - "-name"
+          - "{{ database_name }}-full-*.sql*"
+          - "-mtime"
+          - "+{{ backup_retention }}"
+          - "-delete"
+      
+      - name: "Remove old incremental backups"
+        action: "execute"
+        command: "find"
+        args:
+          - "{{ backup_location }}/incremental"
+          - "-name"
+          - "{{ database_name }}-incremental-*"
+          - "-mtime"
+          - "+{{ backup_retention }}"
+          - "-delete"
+      
+      - name: "Remove old differential backups"
+        action: "execute"
+        command: "find"
+        args:
+          - "{{ backup_location }}/differential"
+          - "-name"
+          - "{{ database_name }}-differential-*.sql*"
+          - "-mtime"
+          - "+{{ backup_retention }}"
+          - "-delete"
+      
+      - name: "Remove old metadata files"
+        action: "execute"
+        command: "find"
+        args:
+          - "{{ backup_location }}"
+          - "-name"
+          - "{{ database_name }}-metadata-*.json"
+          - "-mtime"
+          - "+{{ backup_retention }}"
+          - "-delete"
+
+  - name: "Send Backup Notification"
+    description: "Send notification about backup completion"
+    type: "email"
+    steps:
+      - name: "Send backup success notification"
+        action: "send"
+        template: "backup-success"
+        to: "admin@lexiscan.ai"
+        subject: "Database Backup Completed - {{ backup_name }}"
+        variables:
+          backup_name: "{{ backup_name }}"
+          backup_type: "{{ backup_type }}"
+          database_name: "{{ database_name }}"
+          backup_size: "{{ backup_file_size }}"
+          backup_location: "{{ backup_location }}"
+          backup_date: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          retention_days: "{{ backup_retention }}"
+      
+      - name: "Send backup failure notification"
+        action: "send"
+        template: "backup-failure"
+        to: "admin@lexiscan.ai"
+        subject: "Database Backup Failed - {{ backup_name }}"
+        variables:
+          backup_name: "{{ backup_name }}"
+          backup_type: "{{ backup_type }}"
+          database_name: "{{ database_name }}"
+          error_message: "Backup failed. Please check the logs."
+        condition: "backup_failed == true"
+
+# Playbook completion
+completion:
+  success_message: "Database backup completed successfully"
+  failure_message: "Database backup failed. Please check the logs and retry"
+  next_steps:
+    - "Verify backup integrity"
+    - "Test backup restore procedure"
+    - "Update backup documentation"
+    - "Schedule next backup"
+
+# Playbook rollback
+rollback:
+  description: "Rollback backup procedure if needed"
+  steps:
+    - name: "Remove failed backup files"
+      action: "execute"
+      command: "rm"
+      args:
+        - "-rf"
+        - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}"
+    
+    - name: "Clean up backup directory"
+      action: "execute"
+      command: "rmdir"
+      args:
+        - "{{ backup_location }}/{{ backup_type }}/{{ backup_name }}"
+        - "{{ backup_location }}/{{ backup_type }}"
+        - "{{ backup_location }}"

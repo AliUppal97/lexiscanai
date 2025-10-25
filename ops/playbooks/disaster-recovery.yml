@@ -1,0 +1,644 @@
+---
+# LexiScan AI - Disaster Recovery Playbook
+# Purpose: Automated disaster recovery procedures
+# Author: LexiScan AI Platform Team
+# Version: 1.0.0
+
+name: "Disaster Recovery"
+description: "Automated playbook for disaster recovery procedures"
+version: "1.0.0"
+
+# Playbook metadata
+metadata:
+  author: "LexiScan AI Platform Team"
+  created: "2024-12-01"
+  updated: "2024-12-01"
+  tags: ["disaster", "recovery", "emergency", "automation"]
+  priority: "critical"
+
+# Playbook variables
+variables:
+  disaster_type: "{{ disaster_type | default('') }}"
+  recovery_target: "{{ recovery_target | default('') }}"
+  backup_location: "{{ backup_location | default('/backups') }}"
+  recovery_location: "{{ recovery_location | default('/recovery') }}"
+  database_name: "{{ database_name | default('lexiscan') }}"
+  database_user: "{{ database_user | default('lexiscan') }}"
+  database_host: "{{ database_host | default('postgres') }}"
+  database_port: "{{ database_port | default(5432) }}"
+  recovery_time_objective: "{{ recovery_time_objective | default(4) }}"
+  recovery_point_objective: "{{ recovery_point_objective | default(1) }}"
+
+# Playbook tasks
+tasks:
+  - name: "Validate Disaster Recovery Parameters"
+    description: "Validate all required disaster recovery parameters"
+    type: "validation"
+    steps:
+      - name: "Check disaster type"
+        action: "validate"
+        condition: "disaster_type in ['complete', 'partial', 'database', 'application', 'network']"
+        error_message: "Disaster type must be complete, partial, database, application, or network"
+      
+      - name: "Check recovery target"
+        action: "validate"
+        condition: "recovery_target != ''"
+        error_message: "Recovery target is required"
+      
+      - name: "Check backup location"
+        action: "validate"
+        condition: "backup_location != ''"
+        error_message: "Backup location is required"
+      
+      - name: "Check recovery location"
+        action: "validate"
+        condition: "recovery_location != ''"
+        error_message: "Recovery location is required"
+
+  - name: "Assess Disaster Impact"
+    description: "Assess the impact of the disaster"
+    type: "assessment"
+    steps:
+      - name: "Check system status"
+        action: "kubectl"
+        command: "get pods"
+        expected_status: "Running"
+        condition: "disaster_type != 'complete'"
+      
+      - name: "Check database status"
+        action: "database"
+        query: "SELECT 1"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@{{ database_host }}:{{ database_port }}/{{ database_name }}"
+        expected_result: "1"
+        condition: "disaster_type != 'complete'"
+      
+      - name: "Check application status"
+        action: "http"
+        method: "GET"
+        url: "https://api.lexiscan.ai/health"
+        expected_status: "200"
+        condition: "disaster_type != 'complete'"
+      
+      - name: "Check network connectivity"
+        action: "execute"
+        command: "ping"
+        args:
+          - "-c"
+          - "3"
+          - "{{ database_host }}"
+        expected_status: "0"
+        condition: "disaster_type != 'complete'"
+
+  - name: "Activate Emergency Procedures"
+    description: "Activate emergency procedures and notifications"
+    type: "emergency"
+    steps:
+      - name: "Send emergency notification"
+        action: "send"
+        template: "disaster-emergency"
+        to: "admin@lexiscan.ai,oncall@lexiscan.ai"
+        subject: "DISASTER RECOVERY ACTIVATED - {{ disaster_type }}"
+        variables:
+          disaster_type: "{{ disaster_type }}"
+          recovery_target: "{{ recovery_target }}"
+          activation_time: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          recovery_time_objective: "{{ recovery_time_objective }}"
+          recovery_point_objective: "{{ recovery_point_objective }}"
+      
+      - name: "Create incident ticket"
+        action: "create"
+        ticket:
+          title: "Disaster Recovery - {{ disaster_type }}"
+          description: "Disaster recovery procedures activated for {{ disaster_type }} disaster"
+          priority: "critical"
+          assignee: "disaster-recovery-team"
+          tags: ["disaster", "recovery", "emergency"]
+      
+      - name: "Activate emergency contacts"
+        action: "notify"
+        contacts:
+          - "primary:admin@lexiscan.ai"
+          - "secondary:oncall@lexiscan.ai"
+          - "manager:manager@lexiscan.ai"
+          - "executive:executive@lexiscan.ai"
+
+  - name: "Create Recovery Environment"
+    description: "Create recovery environment for disaster recovery"
+    type: "infrastructure"
+    steps:
+      - name: "Create recovery namespace"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "disaster-recovery"
+            labels:
+              environment: "disaster-recovery"
+              disaster-type: "{{ disaster_type }}"
+      
+      - name: "Create recovery configmap"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "disaster-recovery-config"
+            namespace: "disaster-recovery"
+          data:
+            disaster_type: "{{ disaster_type }}"
+            recovery_target: "{{ recovery_target }}"
+            recovery_time_objective: "{{ recovery_time_objective }}"
+            recovery_point_objective: "{{ recovery_point_objective }}"
+            backup_location: "{{ backup_location }}"
+            recovery_location: "{{ recovery_location }}"
+      
+      - name: "Create recovery secrets"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "disaster-recovery-secrets"
+            namespace: "disaster-recovery"
+          type: Opaque
+          data:
+            database_url: "{{ base64_encode('postgresql://lexiscan:password@postgres:5432/lexiscan') }}"
+            redis_url: "{{ base64_encode('redis://redis:6379') }}"
+            jwt_secret: "{{ base64_encode('disaster-recovery-jwt-secret') }}"
+
+  - name: "Restore Database"
+    description: "Restore database from backup"
+    type: "database"
+    steps:
+      - name: "Stop existing database"
+        action: "kubectl"
+        command: "scale"
+        args:
+          - "deployment"
+          - "lexiscan-postgres"
+          - "--replicas=0"
+        condition: "disaster_type in ['complete', 'partial', 'database']"
+      
+      - name: "Create new database instance"
+        action: "apply"
+        resource: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "disaster-recovery-postgres"
+            namespace: "disaster-recovery"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: "disaster-recovery-postgres"
+            template:
+              metadata:
+                labels:
+                  app: "disaster-recovery-postgres"
+              spec:
+                containers:
+                - name: "postgres"
+                  image: "postgres:15"
+                  ports:
+                  - containerPort: 5432
+                  env:
+                  - name: "POSTGRES_DB"
+                    value: "{{ database_name }}"
+                  - name: "POSTGRES_USER"
+                    value: "{{ database_user }}"
+                  - name: "POSTGRES_PASSWORD"
+                    value: "password"
+                  volumeMounts:
+                  - name: "postgres-data"
+                    mountPath: "/var/lib/postgresql/data"
+                volumes:
+                - name: "postgres-data"
+                  persistentVolumeClaim:
+                    claimName: "disaster-recovery-postgres-pvc"
+      
+      - name: "Wait for database to be ready"
+        action: "kubectl"
+        command: "wait"
+        args:
+          - "--for=condition=ready"
+          - "pod"
+          - "-l"
+          - "app=disaster-recovery-postgres"
+          - "--timeout=300s"
+      
+      - name: "Restore database from backup"
+        action: "execute"
+        command: "pg_restore"
+        args:
+          - "--host=disaster-recovery-postgres"
+          - "--port=5432"
+          - "--username={{ database_user }}"
+          - "--dbname={{ database_name }}"
+          - "--verbose"
+          - "--clean"
+          - "--if-exists"
+          - "{{ backup_location }}/{{ database_name }}-full-backup-$(date +%Y%m%d).sql"
+        environment:
+          PGPASSWORD: "password"
+        condition: "disaster_type in ['complete', 'partial', 'database']"
+      
+      - name: "Verify database restoration"
+        action: "database"
+        query: "SELECT COUNT(*) FROM users"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@disaster-recovery-postgres:5432/{{ database_name }}"
+        expected_result: "> 0"
+        condition: "disaster_type in ['complete', 'partial', 'database']"
+
+  - name: "Restore Application Services"
+    description: "Restore application services"
+    type: "kubernetes"
+    steps:
+      - name: "Deploy disaster recovery API"
+        action: "apply"
+        resource: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "disaster-recovery-api"
+            namespace: "disaster-recovery"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: "disaster-recovery-api"
+            template:
+              metadata:
+                labels:
+                  app: "disaster-recovery-api"
+              spec:
+                containers:
+                - name: "api"
+                  image: "lexiscan/api:latest"
+                  ports:
+                  - containerPort: 3001
+                  env:
+                  - name: "NODE_ENV"
+                    value: "disaster-recovery"
+                  - name: "DATABASE_URL"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "disaster-recovery-secrets"
+                        key: "database_url"
+                  - name: "REDIS_URL"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "disaster-recovery-secrets"
+                        key: "redis_url"
+                  - name: "JWT_SECRET"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "disaster-recovery-secrets"
+                        key: "jwt_secret"
+                  resources:
+                    requests:
+                      cpu: "500m"
+                      memory: "1Gi"
+                    limits:
+                      cpu: "1000m"
+                      memory: "2Gi"
+      
+      - name: "Deploy disaster recovery web"
+        action: "apply"
+        resource: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "disaster-recovery-web"
+            namespace: "disaster-recovery"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: "disaster-recovery-web"
+            template:
+              metadata:
+                labels:
+                  app: "disaster-recovery-web"
+              spec:
+                containers:
+                - name: "web"
+                  image: "lexiscan/web:latest"
+                  ports:
+                  - containerPort: 3000
+                  env:
+                  - name: "NODE_ENV"
+                    value: "disaster-recovery"
+                  - name: "API_URL"
+                    value: "http://disaster-recovery-api:3001"
+                  resources:
+                    requests:
+                      cpu: "250m"
+                      memory: "512Mi"
+                    limits:
+                      cpu: "500m"
+                      memory: "1Gi"
+      
+      - name: "Create disaster recovery services"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "disaster-recovery-api-service"
+            namespace: "disaster-recovery"
+          spec:
+            selector:
+              app: "disaster-recovery-api"
+            ports:
+            - port: 3001
+              targetPort: 3001
+              protocol: TCP
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "disaster-recovery-web-service"
+            namespace: "disaster-recovery"
+          spec:
+            selector:
+              app: "disaster-recovery-web"
+            ports:
+            - port: 3000
+              targetPort: 3000
+              protocol: TCP
+
+  - name: "Configure Disaster Recovery Networking"
+    description: "Configure networking for disaster recovery"
+    type: "kubernetes"
+    steps:
+      - name: "Create disaster recovery ingress"
+        action: "apply"
+        resource: |
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "disaster-recovery-ingress"
+            namespace: "disaster-recovery"
+            annotations:
+              nginx.ingress.kubernetes.io/rewrite-target: /
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          spec:
+            tls:
+            - hosts:
+              - "disaster-recovery.lexiscan.ai"
+              secretName: "disaster-recovery-tls"
+            rules:
+            - host: "disaster-recovery.lexiscan.ai"
+              http:
+                paths:
+                - path: "/api"
+                  pathType: "Prefix"
+                  backend:
+                    service:
+                      name: "disaster-recovery-api-service"
+                      port:
+                        number: 3001
+                - path: "/"
+                  pathType: "Prefix"
+                  backend:
+                    service:
+                      name: "disaster-recovery-web-service"
+                      port:
+                        number: 3000
+      
+      - name: "Create disaster recovery network policy"
+        action: "apply"
+        resource: |
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: "disaster-recovery-network-policy"
+            namespace: "disaster-recovery"
+          spec:
+            podSelector: {}
+            policyTypes:
+            - Ingress
+            - Egress
+            ingress:
+            - from:
+              - namespaceSelector:
+                  matchLabels:
+                    name: "disaster-recovery"
+              - namespaceSelector:
+                  matchLabels:
+                    name: "ingress-nginx"
+            egress:
+            - to:
+              - namespaceSelector:
+                  matchLabels:
+                    name: "disaster-recovery"
+              - namespaceSelector:
+                  matchLabels:
+                    name: "default"
+
+  - name: "Verify Disaster Recovery"
+    description: "Verify that disaster recovery is working"
+    type: "verification"
+    steps:
+      - name: "Check disaster recovery services"
+        action: "kubectl"
+        command: "get pods"
+        args:
+          - "-n"
+          - "disaster-recovery"
+        expected_status: "Running"
+      
+      - name: "Check disaster recovery database"
+        action: "database"
+        query: "SELECT COUNT(*) FROM users"
+        database: "{{ database_name }}"
+        connection: "postgresql://{{ database_user }}:password@disaster-recovery-postgres:5432/{{ database_name }}"
+        expected_result: "> 0"
+      
+      - name: "Check disaster recovery API"
+        action: "http"
+        method: "GET"
+        url: "https://disaster-recovery.lexiscan.ai/api/health"
+        expected_status: "200"
+      
+      - name: "Check disaster recovery web"
+        action: "http"
+        method: "GET"
+        url: "https://disaster-recovery.lexiscan.ai/"
+        expected_status: "200"
+      
+      - name: "Check disaster recovery performance"
+        action: "http"
+        method: "GET"
+        url: "https://disaster-recovery.lexiscan.ai/api/health"
+        expected_response_time: "< 2s"
+
+  - name: "Switch Traffic to Disaster Recovery"
+    description: "Switch traffic to disaster recovery environment"
+    type: "networking"
+    steps:
+      - name: "Update DNS to point to disaster recovery"
+        action: "execute"
+        command: "kubectl"
+        args:
+          - "patch"
+          - "service"
+          - "lexiscan-api"
+          - "-p"
+          - "'{\"spec\":{\"externalName\":\"disaster-recovery.lexiscan.ai\"}}'"
+      
+      - name: "Update ingress to point to disaster recovery"
+        action: "execute"
+        command: "kubectl"
+        args:
+          - "patch"
+          - "ingress"
+          - "lexiscan-ingress"
+          - "-p"
+          - "'{\"spec\":{\"rules\":[{\"host\":\"api.lexiscan.ai\",\"http\":{\"paths\":[{\"path\":\"/\",\"pathType\":\"Prefix\",\"backend\":{\"service\":{\"name\":\"disaster-recovery-api-service\",\"port\":{\"number\":3001}}}}]}}]}}'"
+      
+      - name: "Verify traffic switch"
+        action: "http"
+        method: "GET"
+        url: "https://api.lexiscan.ai/health"
+        expected_status: "200"
+
+  - name: "Monitor Disaster Recovery"
+    description: "Monitor disaster recovery environment"
+    type: "monitoring"
+    steps:
+      - name: "Enable disaster recovery monitoring"
+        action: "apply"
+        resource: |
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          metadata:
+            name: "disaster-recovery-monitor"
+            namespace: "disaster-recovery"
+            labels:
+              environment: "disaster-recovery"
+          spec:
+            selector:
+              matchLabels:
+                app: "disaster-recovery-api"
+            endpoints:
+            - port: "3001"
+              path: "/metrics"
+              interval: "30s"
+      
+      - name: "Create disaster recovery alerts"
+        action: "apply"
+        resource: |
+          apiVersion: monitoring.coreos.com/v1
+          kind: PrometheusRule
+          metadata:
+            name: "disaster-recovery-alerts"
+            namespace: "disaster-recovery"
+            labels:
+              environment: "disaster-recovery"
+          spec:
+            groups:
+            - name: "disaster-recovery.rules"
+              rules:
+              - alert: "DisasterRecoveryAPIDown"
+                expr: "up{job=\"disaster-recovery-api\"} == 0"
+                for: "1m"
+                labels:
+                  severity: "critical"
+                  environment: "disaster-recovery"
+                annotations:
+                  summary: "Disaster recovery API is down"
+                  description: "Disaster recovery API is down"
+              - alert: "DisasterRecoveryHighErrorRate"
+                expr: "rate(http_requests_total{job=\"disaster-recovery-api\",status=~\"5..\"}[5m]) > 0.1"
+                for: "2m"
+                labels:
+                  severity: "warning"
+                  environment: "disaster-recovery"
+                annotations:
+                  summary: "Disaster recovery API high error rate"
+                  description: "Disaster recovery API error rate is high"
+
+  - name: "Send Disaster Recovery Notification"
+    description: "Send notification about disaster recovery completion"
+    type: "email"
+    steps:
+      - name: "Send disaster recovery success notification"
+        action: "send"
+        template: "disaster-recovery-success"
+        to: "admin@lexiscan.ai,oncall@lexiscan.ai"
+        subject: "Disaster Recovery Completed - {{ disaster_type }}"
+        variables:
+          disaster_type: "{{ disaster_type }}"
+          recovery_target: "{{ recovery_target }}"
+          completion_time: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          recovery_time_objective: "{{ recovery_time_objective }}"
+          recovery_point_objective: "{{ recovery_point_objective }}"
+          disaster_recovery_url: "https://disaster-recovery.lexiscan.ai"
+          monitoring_url: "https://monitoring.lexiscan.ai"
+      
+      - name: "Send disaster recovery failure notification"
+        action: "send"
+        template: "disaster-recovery-failure"
+        to: "admin@lexiscan.ai,oncall@lexiscan.ai"
+        subject: "Disaster Recovery Failed - {{ disaster_type }}"
+        variables:
+          disaster_type: "{{ disaster_type }}"
+          recovery_target: "{{ recovery_target }}"
+          failure_time: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          error_message: "Disaster recovery failed. Please check the logs."
+        condition: "disaster_recovery_failed == true"
+
+# Playbook completion
+completion:
+  success_message: "Disaster recovery completed successfully"
+  failure_message: "Disaster recovery failed. Please check the logs and retry"
+  next_steps:
+    - "Monitor disaster recovery environment for 24 hours"
+    - "Plan permanent recovery procedures"
+    - "Update disaster recovery documentation"
+    - "Schedule disaster recovery testing"
+
+# Playbook rollback
+rollback:
+  description: "Rollback disaster recovery if needed"
+  steps:
+    - name: "Stop disaster recovery services"
+      action: "kubectl"
+      command: "delete"
+      args:
+        - "namespace"
+        - "disaster-recovery"
+    
+    - name: "Restore original services"
+      action: "kubectl"
+      command: "scale"
+      args:
+        - "deployment"
+        - "lexiscan-postgres"
+        - "--replicas=1"
+    
+    - name: "Restore original traffic"
+      action: "execute"
+      command: "kubectl"
+      args:
+        - "patch"
+        - "service"
+        - "lexiscan-api"
+        - "-p"
+        - "'{\"spec\":{\"externalName\":\"api.lexiscan.ai\"}}'"
+    
+    - name: "Notify of rollback"
+      action: "send"
+      template: "disaster-recovery-rollback"
+      to: "admin@lexiscan.ai,oncall@lexiscan.ai"
+      subject: "Disaster Recovery Rollback - {{ disaster_type }}"
+      variables:
+        disaster_type: "{{ disaster_type }}"
+        rollback_time: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        support_email: "support@lexiscan.ai"

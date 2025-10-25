@@ -1,0 +1,109 @@
+{
+  "name": "lexiscan-operational-playbooks",
+  "version": "1.0.0",
+  "description": "Operational playbooks for LexiScan AI platform",
+  "main": "index.js",
+  "scripts": {
+    "test": "ansible-playbook --check -i inventory ops/playbooks/onboarding-new-tenant.yml",
+    "test-all": "ansible-playbook --check -i inventory ops/playbooks/*.yml",
+    "validate": "ansible-playbook --syntax-check -i inventory ops/playbooks/*.yml",
+    "lint": "ansible-lint ops/playbooks/*.yml",
+    "docs": "ansible-doc -t playbook ops/playbooks/*.yml",
+    "backup": "ansible-playbook -i inventory ops/playbooks/database-backup.yml -e backup_type=full -e backup_location=s3://lexiscan-backups -e retention_days=30 -e encryption=true -e compression=true",
+    "security-audit": "ansible-playbook -i inventory ops/playbooks/security-audit.yml -e audit_type=comprehensive -e audit_scope=full -e compliance_standard=SOC2 -e audit_duration=7 -e audit_frequency=monthly -e audit_team=security-team",
+    "onboard-tenant": "ansible-playbook -i inventory ops/playbooks/onboarding-new-tenant.yml -e tenant_name='New Tenant' -e tenant_slug='new-tenant' -e owner_email='admin@new-tenant.com' -e owner_first_name='John' -e owner_last_name='Doe' -e plan=enterprise -e region=us-east-1",
+    "migrate-users": "ansible-playbook -i inventory ops/playbooks/user-migration.yml -e source_tenant=old-tenant -e target_tenant=new-tenant -e user_ids=user1,user2,user3 -e migration_type=tenant -e dry_run=false",
+    "disaster-recovery": "ansible-playbook -i inventory ops/playbooks/disaster-recovery.yml -e disaster_type=complete -e recovery_target=disaster-recovery -e backup_location=/backups -e recovery_location=/recovery -e recovery_time_objective=4 -e recovery_point_objective=1"
+  },
+  "keywords": [
+    "ansible",
+    "playbooks",
+    "automation",
+    "operations",
+    "devops",
+    "infrastructure",
+    "lexiscan",
+    "ai",
+    "saas",
+    "multi-tenant"
+  ],
+  "author": "LexiScan AI Platform Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lexiscan/lexiscan-ai.git",
+    "directory": "ops/playbooks"
+  },
+  "bugs": {
+    "url": "https://github.com/lexiscan/lexiscan-ai/issues"
+  },
+  "homepage": "https://lexiscan.ai",
+  "engines": {
+    "ansible": ">=2.9.0",
+    "python": ">=3.6.0"
+  },
+  "dependencies": {
+    "ansible": "^2.9.0",
+    "ansible-lint": "^4.0.0",
+    "ansible-runner": "^1.4.0"
+  },
+  "devDependencies": {
+    "ansible-doc": "^2.9.0",
+    "ansible-playbook": "^2.9.0",
+    "ansible-vault": "^2.9.0"
+  },
+  "files": [
+    "*.yml",
+    "*.md",
+    "inventory/",
+    "group_vars/",
+    "host_vars/",
+    "roles/",
+    "collections/",
+    "requirements.yml"
+  ],
+  "ansible": {
+    "version": "2.9.0",
+    "collections": [
+      "community.general",
+      "community.kubernetes",
+      "community.docker",
+      "community.postgresql",
+      "community.mysql",
+      "community.redis",
+      "community.aws",
+      "community.azure",
+      "community.gcp"
+    ],
+    "roles": [
+      "lexiscan.tenant-management",
+      "lexiscan.user-migration",
+      "lexiscan.database-backup",
+      "lexiscan.disaster-recovery",
+      "lexiscan.security-audit"
+    ]
+  },
+  "config": {
+    "ansible": {
+      "inventory": "inventory/hosts.yml",
+      "host_key_checking": false,
+      "remote_user": "ubuntu",
+      "private_key_file": "~/.ssh/lexiscan.pem",
+      "become": true,
+      "become_method": "sudo",
+      "become_user": "root",
+      "become_ask_pass": false
+    }
+  },
+  "scripts": {
+    "setup": "ansible-galaxy install -r requirements.yml",
+    "install": "ansible-galaxy collection install -r requirements.yml",
+    "update": "ansible-galaxy collection update",
+    "clean": "ansible-galaxy collection remove --force",
+    "backup": "ansible-playbook -i inventory ops/playbooks/database-backup.yml -e backup_type=full -e backup_location=s3://lexiscan-backups -e retention_days=30 -e encryption=true -e compression=true",
+    "security-audit": "ansible-playbook -i inventory ops/playbooks/security-audit.yml -e audit_type=comprehensive -e audit_scope=full -e compliance_standard=SOC2 -e audit_duration=7 -e audit_frequency=monthly -e audit_team=security-team",
+    "onboard-tenant": "ansible-playbook -i inventory ops/playbooks/onboarding-new-tenant.yml -e tenant_name='New Tenant' -e tenant_slug='new-tenant' -e owner_email='admin@new-tenant.com' -e owner_first_name='John' -e owner_last_name='Doe' -e plan=enterprise -e region=us-east-1",
+    "migrate-users": "ansible-playbook -i inventory ops/playbooks/user-migration.yml -e source_tenant=old-tenant -e target_tenant=new-tenant -e user_ids=user1,user2,user3 -e migration_type=tenant -e dry_run=false",
+    "disaster-recovery": "ansible-playbook -i inventory ops/playbooks/disaster-recovery.yml -e disaster_type=complete -e recovery_target=disaster-recovery -e backup_location=/backups -e recovery_location=/recovery -e recovery_time_objective=4 -e recovery_point_objective=1"
+  }
+}

@@ -1,0 +1,43 @@
+---
+# LexiScan AI - Operational Playbooks Requirements
+# Ansible Galaxy collections and roles required for playbooks
+
+collections:
+  - name: community.general
+    version: ">=1.0.0"
+  - name: community.kubernetes
+    version: ">=1.0.0"
+  - name: community.docker
+    version: ">=1.0.0"
+  - name: community.postgresql
+    version: ">=1.0.0"
+  - name: community.mysql
+    version: ">=1.0.0"
+  - name: community.redis
+    version: ">=1.0.0"
+  - name: community.aws
+    version: ">=1.0.0"
+  - name: community.azure
+    version: ">=1.0.0"
+  - name: community.gcp
+    version: ">=1.0.0"
+  - name: kubernetes.core
+    version: ">=1.0.0"
+  - name: amazon.aws
+    version: ">=1.0.0"
+  - name: azure.azcollection
+    version: ">=1.0.0"
+  - name: google.cloud
+    version: ">=1.0.0"
+
+roles:
+  - name: lexiscan.tenant-management
+    version: "1.0.0"
+  - name: lexiscan.user-migration
+    version: "1.0.0"
+  - name: lexiscan.database-backup
+    version: "1.0.0"
+  - name: lexiscan.disaster-recovery
+    version: "1.0.0"
+  - name: lexiscan.security-audit
+    version: "1.0.0"

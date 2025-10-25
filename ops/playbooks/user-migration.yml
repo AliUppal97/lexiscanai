@@ -1,0 +1,474 @@
+---
+# LexiScan AI - User Migration Playbook
+# Purpose: Automated migration of users between tenants or systems
+# Author: LexiScan AI Platform Team
+# Version: 1.0.0
+
+name: "User Migration"
+description: "Automated playbook for migrating users between tenants or systems"
+version: "1.0.0"
+
+# Playbook metadata
+metadata:
+  author: "LexiScan AI Platform Team"
+  created: "2024-12-01"
+  updated: "2024-12-01"
+  tags: ["migration", "user", "tenant", "automation"]
+  priority: "high"
+
+# Playbook variables
+variables:
+  source_tenant: "{{ source_tenant | default('') }}"
+  target_tenant: "{{ target_tenant | default('') }}"
+  user_emails: "{{ user_emails | default([]) }}"
+  migration_type: "{{ migration_type | default('tenant') }}"
+  preserve_data: "{{ preserve_data | default(true) }}"
+  notify_users: "{{ notify_users | default(true) }}"
+  migration_date: "{{ migration_date | default('') }}"
+
+# Playbook tasks
+tasks:
+  - name: "Validate Migration Parameters"
+    description: "Validate all required migration parameters"
+    type: "validation"
+    steps:
+      - name: "Check source tenant"
+        action: "validate"
+        condition: "source_tenant != ''"
+        error_message: "Source tenant is required"
+      
+      - name: "Check target tenant"
+        action: "validate"
+        condition: "target_tenant != ''"
+        error_message: "Target tenant is required"
+      
+      - name: "Check user emails"
+        action: "validate"
+        condition: "user_emails | length > 0"
+        error_message: "At least one user email is required"
+      
+      - name: "Check migration type"
+        action: "validate"
+        condition: "migration_type in ['tenant', 'system', 'plan']"
+        error_message: "Migration type must be tenant, system, or plan"
+
+  - name: "Pre-Migration Backup"
+    description: "Create backup of user data before migration"
+    type: "backup"
+    steps:
+      - name: "Backup user data"
+        action: "database"
+        query: |
+          SELECT u.*, o.name as organization_name, o.slug as organization_slug
+          FROM users u
+          JOIN organizations o ON u.organization_id = o.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_file: "user-backup-{{ migration_date }}.json"
+      
+      - name: "Backup user documents"
+        action: "database"
+        query: |
+          SELECT d.*, u.email as user_email
+          FROM documents d
+          JOIN users u ON d.user_id = u.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_file: "documents-backup-{{ migration_date }}.json"
+      
+      - name: "Backup user sessions"
+        action: "database"
+        query: |
+          SELECT s.*, u.email as user_email
+          FROM user_sessions s
+          JOIN users u ON s.user_id = u.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_file: "sessions-backup-{{ migration_date }}.json"
+
+  - name: "Get Target Tenant Information"
+    description: "Get target tenant organization details"
+    type: "database"
+    steps:
+      - name: "Get target organization ID"
+        action: "query"
+        query: "SELECT id FROM organizations WHERE slug = '{{ target_tenant }}'"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_variable: "target_organization_id"
+      
+      - name: "Get target organization details"
+        action: "query"
+        query: "SELECT * FROM organizations WHERE slug = '{{ target_tenant }}'"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_variable: "target_organization"
+
+  - name: "Migrate User Accounts"
+    description: "Migrate user accounts to target tenant"
+    type: "database"
+    steps:
+      - name: "Update user organization"
+        action: "execute"
+        query: |
+          UPDATE users 
+          SET organization_id = {{ target_organization_id }}, 
+              updated_at = NOW()
+          WHERE email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user roles if needed"
+        action: "execute"
+        query: |
+          UPDATE users 
+          SET role = CASE 
+            WHEN role = 'admin' THEN 'user'
+            ELSE role
+          END,
+          updated_at = NOW()
+          WHERE email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user permissions"
+        action: "execute"
+        query: |
+          INSERT INTO user_permissions (user_id, permission, granted_at)
+          SELECT u.id, p.permission, NOW()
+          FROM users u
+          CROSS JOIN (
+            SELECT 'read_documents' as permission
+            UNION SELECT 'create_documents'
+            UNION SELECT 'update_documents'
+            UNION SELECT 'delete_documents'
+          ) p
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+          ON CONFLICT (user_id, permission) DO NOTHING
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Migrate User Data"
+    description: "Migrate user-related data to target tenant"
+    type: "database"
+    steps:
+      - name: "Update document ownership"
+        action: "execute"
+        query: |
+          UPDATE documents 
+          SET updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user sessions"
+        action: "execute"
+        query: |
+          UPDATE user_sessions 
+          SET updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update audit logs"
+        action: "execute"
+        query: |
+          UPDATE audit_logs 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Update User Access"
+    description: "Update user access to target tenant resources"
+    type: "kubernetes"
+    steps:
+      - name: "Create user access tokens"
+        action: "execute"
+        query: |
+          INSERT INTO user_tokens (user_id, token, expires_at, created_at)
+          SELECT u.id, gen_random_uuid(), NOW() + INTERVAL '30 days', NOW()
+          FROM users u
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user API keys"
+        action: "execute"
+        query: |
+          UPDATE api_keys 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user webhooks"
+        action: "execute"
+        query: |
+          UPDATE webhooks 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Update User Billing"
+    description: "Update user billing information for target tenant"
+    type: "database"
+    steps:
+      - name: "Update user subscriptions"
+        action: "execute"
+        query: |
+          UPDATE subscriptions 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user invoices"
+        action: "execute"
+        query: |
+          UPDATE invoices 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user payment methods"
+        action: "execute"
+        query: |
+          UPDATE payment_methods 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Update User Notifications"
+    description: "Update user notification preferences for target tenant"
+    type: "database"
+    steps:
+      - name: "Update user notification preferences"
+        action: "execute"
+        query: |
+          UPDATE user_notifications 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Update user email preferences"
+        action: "execute"
+        query: |
+          UPDATE user_email_preferences 
+          SET organization_id = {{ target_organization_id }},
+              updated_at = NOW()
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Send Migration Notifications"
+    description: "Send notifications to users about the migration"
+    type: "email"
+    steps:
+      - name: "Send migration notification"
+        action: "send"
+        template: "user-migration"
+        to: "{{ user_emails | join(',') }}"
+        subject: "Account Migration - {{ target_tenant }}"
+        variables:
+          target_tenant: "{{ target_tenant }}"
+          migration_date: "{{ migration_date }}"
+          login_url: "https://{{ target_tenant }}.lexiscan.ai/login"
+          dashboard_url: "https://{{ target_tenant }}.lexiscan.ai/dashboard"
+          support_email: "support@lexiscan.ai"
+          documentation_url: "https://docs.lexiscan.ai"
+      
+      - name: "Send admin notification"
+        action: "send"
+        template: "admin-migration"
+        to: "admin@lexiscan.ai"
+        subject: "User Migration Completed - {{ target_tenant }}"
+        variables:
+          source_tenant: "{{ source_tenant }}"
+          target_tenant: "{{ target_tenant }}"
+          user_count: "{{ user_emails | length }}"
+          migration_date: "{{ migration_date }}"
+
+  - name: "Verify Migration"
+    description: "Verify that the migration was successful"
+    type: "verification"
+    steps:
+      - name: "Check user organization"
+        action: "database"
+        query: |
+          SELECT u.email, o.name as organization_name, o.slug as organization_slug
+          FROM users u
+          JOIN organizations o ON u.organization_id = o.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        expected_result: "All users should be in target tenant"
+      
+      - name: "Check user data integrity"
+        action: "database"
+        query: |
+          SELECT COUNT(*) as document_count
+          FROM documents d
+          JOIN users u ON d.user_id = u.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        expected_result: "Document count should match backup"
+      
+      - name: "Check user access"
+        action: "database"
+        query: |
+          SELECT COUNT(*) as token_count
+          FROM user_tokens t
+          JOIN users u ON t.user_id = u.id
+          WHERE u.email IN ({{ user_emails | join(',') | quote }})
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        expected_result: "All users should have access tokens"
+      
+      - name: "Test user login"
+        action: "http"
+        method: "POST"
+        url: "https://{{ target_tenant }}.lexiscan.ai/api/auth/login"
+        body: |
+          {
+            "email": "{{ user_emails[0] }}",
+            "password": "test_password"
+          }
+        expected_status: "200"
+
+  - name: "Cleanup Source Tenant"
+    description: "Clean up source tenant data if needed"
+    type: "database"
+    steps:
+      - name: "Remove user sessions from source"
+        action: "execute"
+        query: |
+          DELETE FROM user_sessions 
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          ) AND organization_id = (
+            SELECT id FROM organizations WHERE slug = '{{ source_tenant }}'
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Remove user tokens from source"
+        action: "execute"
+        query: |
+          DELETE FROM user_tokens 
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          ) AND organization_id = (
+            SELECT id FROM organizations WHERE slug = '{{ source_tenant }}'
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Remove user API keys from source"
+        action: "execute"
+        query: |
+          DELETE FROM api_keys 
+          WHERE user_id IN (
+            SELECT id FROM users 
+            WHERE email IN ({{ user_emails | join(',') | quote }})
+          ) AND organization_id = (
+            SELECT id FROM organizations WHERE slug = '{{ source_tenant }}'
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+# Playbook completion
+completion:
+  success_message: "User migration completed successfully"
+  failure_message: "User migration failed. Please check the logs and retry"
+  next_steps:
+    - "Verify all users can access target tenant"
+    - "Monitor user activity for 24 hours"
+    - "Follow up with users after 7 days"
+    - "Update documentation with migration details"
+
+# Playbook rollback
+rollback:
+  description: "Rollback user migration if needed"
+  steps:
+    - name: "Restore user data from backup"
+      action: "database"
+      query: |
+        UPDATE users 
+        SET organization_id = (
+          SELECT id FROM organizations WHERE slug = '{{ source_tenant }}'
+        ), updated_at = NOW()
+        WHERE email IN ({{ user_emails | join(',') | quote }})
+      database: "lexiscan"
+      connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+    
+    - name: "Restore user sessions"
+      action: "database"
+      query: |
+        UPDATE user_sessions 
+        SET organization_id = (
+          SELECT id FROM organizations WHERE slug = '{{ source_tenant }}'
+        ), updated_at = NOW()
+        WHERE user_id IN (
+          SELECT id FROM users 
+          WHERE email IN ({{ user_emails | join(',') | quote }})
+        )
+      database: "lexiscan"
+      connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+    
+    - name: "Notify users of rollback"
+      action: "email"
+      template: "migration-rollback"
+      to: "{{ user_emails | join(',') }}"
+      subject: "Migration Rollback - {{ source_tenant }}"
+      variables:
+        source_tenant: "{{ source_tenant }}"
+        rollback_date: "{{ migration_date }}"
+        support_email: "support@lexiscan.ai"

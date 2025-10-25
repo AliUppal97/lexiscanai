@@ -1,0 +1,553 @@
+---
+# LexiScan AI - New Tenant Onboarding Playbook
+# Purpose: Automated onboarding of new tenants to the LexiScan AI platform
+# Author: LexiScan AI Platform Team
+# Version: 1.0.0
+
+name: "Onboard New Tenant"
+description: "Automated playbook for onboarding new tenants to LexiScan AI platform"
+version: "1.0.0"
+
+# Playbook metadata
+metadata:
+  author: "LexiScan AI Platform Team"
+  created: "2024-12-01"
+  updated: "2024-12-01"
+  tags: ["onboarding", "tenant", "automation"]
+  priority: "high"
+
+# Playbook variables
+variables:
+  tenant_name: "{{ tenant_name | default('') }}"
+  tenant_slug: "{{ tenant_slug | default('') }}"
+  tenant_email: "{{ tenant_email | default('') }}"
+  tenant_plan: "{{ tenant_plan | default('enterprise') }}"
+  tenant_region: "{{ tenant_region | default('us-east-1') }}"
+  admin_user_email: "{{ admin_user_email | default('') }}"
+  admin_user_name: "{{ admin_user_name | default('') }}"
+  admin_user_phone: "{{ admin_user_phone | default('') }}"
+
+# Playbook tasks
+tasks:
+  - name: "Validate Input Parameters"
+    description: "Validate all required input parameters"
+    type: "validation"
+    steps:
+      - name: "Check tenant name"
+        action: "validate"
+        condition: "tenant_name != ''"
+        error_message: "Tenant name is required"
+      
+      - name: "Check tenant slug"
+        action: "validate"
+        condition: "tenant_slug != ''"
+        error_message: "Tenant slug is required"
+      
+      - name: "Check tenant email"
+        action: "validate"
+        condition: "tenant_email != ''"
+        error_message: "Tenant email is required"
+      
+      - name: "Check admin user email"
+        action: "validate"
+        condition: "admin_user_email != ''"
+        error_message: "Admin user email is required"
+
+  - name: "Create Tenant Organization"
+    description: "Create new tenant organization in database"
+    type: "database"
+    steps:
+      - name: "Create organization record"
+        action: "execute"
+        query: |
+          INSERT INTO organizations (
+            name, slug, email, plan, region, status, created_at, updated_at
+          ) VALUES (
+            '{{ tenant_name }}', '{{ tenant_slug }}', '{{ tenant_email }}', 
+            '{{ tenant_plan }}', '{{ tenant_region }}', 'active', 
+            NOW(), NOW()
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Get organization ID"
+        action: "query"
+        query: "SELECT id FROM organizations WHERE slug = '{{ tenant_slug }}'"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_variable: "organization_id"
+
+  - name: "Create Admin User"
+    description: "Create admin user for the tenant"
+    type: "database"
+    steps:
+      - name: "Create admin user"
+        action: "execute"
+        query: |
+          INSERT INTO users (
+            email, first_name, last_name, phone, organization_id, 
+            role, is_active, created_at, updated_at
+          ) VALUES (
+            '{{ admin_user_email }}', '{{ admin_user_name }}', '', '{{ admin_user_phone }}',
+            {{ organization_id }}, 'admin', true, NOW(), NOW()
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Get user ID"
+        action: "query"
+        query: "SELECT id FROM users WHERE email = '{{ admin_user_email }}'"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+        output_variable: "user_id"
+
+  - name: "Create Tenant Resources"
+    description: "Create tenant-specific resources and configurations"
+    type: "kubernetes"
+    steps:
+      - name: "Create tenant namespace"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "tenant-{{ tenant_slug }}"
+            labels:
+              tenant: "{{ tenant_slug }}"
+              environment: "production"
+      
+      - name: "Create tenant configmap"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "tenant-config"
+            namespace: "tenant-{{ tenant_slug }}"
+          data:
+            tenant_name: "{{ tenant_name }}"
+            tenant_slug: "{{ tenant_slug }}"
+            tenant_plan: "{{ tenant_plan }}"
+            tenant_region: "{{ tenant_region }}"
+      
+      - name: "Create tenant secrets"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "tenant-secrets"
+            namespace: "tenant-{{ tenant_slug }}"
+          type: Opaque
+          data:
+            database_url: "{{ base64_encode('postgresql://lexiscan:password@postgres:5432/lexiscan') }}"
+            redis_url: "{{ base64_encode('redis://redis:6379') }}"
+            jwt_secret: "{{ base64_encode('tenant-jwt-secret') }}"
+      
+      - name: "Create tenant service account"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: "tenant-sa"
+            namespace: "tenant-{{ tenant_slug }}"
+      
+      - name: "Create tenant role"
+        action: "apply"
+        resource: |
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: "tenant-role"
+            namespace: "tenant-{{ tenant_slug }}"
+          rules:
+          - apiGroups: [""]
+            resources: ["pods", "services", "configmaps", "secrets"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      
+      - name: "Create tenant role binding"
+        action: "apply"
+        resource: |
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: "tenant-role-binding"
+            namespace: "tenant-{{ tenant_slug }}"
+          subjects:
+          - kind: ServiceAccount
+            name: "tenant-sa"
+            namespace: "tenant-{{ tenant_slug }}"
+          roleRef:
+            kind: Role
+            name: "tenant-role"
+            apiGroup: rbac.authorization.k8s.io
+
+  - name: "Deploy Tenant Services"
+    description: "Deploy tenant-specific services"
+    type: "kubernetes"
+    steps:
+      - name: "Deploy tenant API"
+        action: "apply"
+        resource: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "tenant-api"
+            namespace: "tenant-{{ tenant_slug }}"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: "tenant-api"
+            template:
+              metadata:
+                labels:
+                  app: "tenant-api"
+              spec:
+                serviceAccountName: "tenant-sa"
+                containers:
+                - name: "api"
+                  image: "lexiscan/api:latest"
+                  ports:
+                  - containerPort: 3001
+                  env:
+                  - name: "NODE_ENV"
+                    value: "production"
+                  - name: "TENANT_SLUG"
+                    value: "{{ tenant_slug }}"
+                  - name: "DATABASE_URL"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "tenant-secrets"
+                        key: "database_url"
+                  - name: "REDIS_URL"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "tenant-secrets"
+                        key: "redis_url"
+                  - name: "JWT_SECRET"
+                    valueFrom:
+                      secretKeyRef:
+                        name: "tenant-secrets"
+                        key: "jwt_secret"
+                  resources:
+                    requests:
+                      cpu: "500m"
+                      memory: "1Gi"
+                    limits:
+                      cpu: "1000m"
+                      memory: "2Gi"
+      
+      - name: "Deploy tenant web"
+        action: "apply"
+        resource: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "tenant-web"
+            namespace: "tenant-{{ tenant_slug }}"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: "tenant-web"
+            template:
+              metadata:
+                labels:
+                  app: "tenant-web"
+              spec:
+                serviceAccountName: "tenant-sa"
+                containers:
+                - name: "web"
+                  image: "lexiscan/web:latest"
+                  ports:
+                  - containerPort: 3000
+                  env:
+                  - name: "NODE_ENV"
+                    value: "production"
+                  - name: "TENANT_SLUG"
+                    value: "{{ tenant_slug }}"
+                  - name: "API_URL"
+                    value: "http://tenant-api:3001"
+                  resources:
+                    requests:
+                      cpu: "250m"
+                      memory: "512Mi"
+                    limits:
+                      cpu: "500m"
+                      memory: "1Gi"
+      
+      - name: "Create tenant services"
+        action: "apply"
+        resource: |
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "tenant-api-service"
+            namespace: "tenant-{{ tenant_slug }}"
+          spec:
+            selector:
+              app: "tenant-api"
+            ports:
+            - port: 3001
+              targetPort: 3001
+              protocol: TCP
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "tenant-web-service"
+            namespace: "tenant-{{ tenant_slug }}"
+          spec:
+            selector:
+              app: "tenant-web"
+            ports:
+            - port: 3000
+              targetPort: 3000
+              protocol: TCP
+
+  - name: "Configure Tenant Networking"
+    description: "Configure networking for the tenant"
+    type: "kubernetes"
+    steps:
+      - name: "Create tenant ingress"
+        action: "apply"
+        resource: |
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "tenant-ingress"
+            namespace: "tenant-{{ tenant_slug }}"
+            annotations:
+              nginx.ingress.kubernetes.io/rewrite-target: /
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          spec:
+            tls:
+            - hosts:
+              - "{{ tenant_slug }}.lexiscan.ai"
+              secretName: "tenant-tls"
+            rules:
+            - host: "{{ tenant_slug }}.lexiscan.ai"
+              http:
+                paths:
+                - path: "/api"
+                  pathType: "Prefix"
+                  backend:
+                    service:
+                      name: "tenant-api-service"
+                      port:
+                        number: 3001
+                - path: "/"
+                  pathType: "Prefix"
+                  backend:
+                    service:
+                      name: "tenant-web-service"
+                      port:
+                        number: 3000
+      
+      - name: "Create tenant network policy"
+        action: "apply"
+        resource: |
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: "tenant-network-policy"
+            namespace: "tenant-{{ tenant_slug }}"
+          spec:
+            podSelector: {}
+            policyTypes:
+            - Ingress
+            - Egress
+            ingress:
+            - from:
+              - namespaceSelector:
+                  matchLabels:
+                    name: "tenant-{{ tenant_slug }}"
+              - namespaceSelector:
+                  matchLabels:
+                    name: "ingress-nginx"
+            egress:
+            - to:
+              - namespaceSelector:
+                  matchLabels:
+                    name: "tenant-{{ tenant_slug }}"
+              - namespaceSelector:
+                  matchLabels:
+                    name: "default"
+
+  - name: "Setup Tenant Monitoring"
+    description: "Configure monitoring for the tenant"
+    type: "kubernetes"
+    steps:
+      - name: "Create tenant service monitor"
+        action: "apply"
+        resource: |
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          metadata:
+            name: "tenant-monitor"
+            namespace: "tenant-{{ tenant_slug }}"
+            labels:
+              tenant: "{{ tenant_slug }}"
+          spec:
+            selector:
+              matchLabels:
+                app: "tenant-api"
+            endpoints:
+            - port: "3001"
+              path: "/metrics"
+              interval: "30s"
+      
+      - name: "Create tenant alert rules"
+        action: "apply"
+        resource: |
+          apiVersion: monitoring.coreos.com/v1
+          kind: PrometheusRule
+          metadata:
+            name: "tenant-alerts"
+            namespace: "tenant-{{ tenant_slug }}"
+            labels:
+              tenant: "{{ tenant_slug }}"
+          spec:
+            groups:
+            - name: "tenant.rules"
+              rules:
+              - alert: "TenantAPIDown"
+                expr: "up{job=\"tenant-api\"} == 0"
+                for: "1m"
+                labels:
+                  severity: "critical"
+                  tenant: "{{ tenant_slug }}"
+                annotations:
+                  summary: "Tenant API is down"
+                  description: "Tenant {{ tenant_slug }} API is down"
+              - alert: "TenantHighErrorRate"
+                expr: "rate(http_requests_total{job=\"tenant-api\",status=~\"5..\"}[5m]) > 0.1"
+                for: "2m"
+                labels:
+                  severity: "warning"
+                  tenant: "{{ tenant_slug }}"
+                annotations:
+                  summary: "Tenant API high error rate"
+                  description: "Tenant {{ tenant_slug }} API error rate is high"
+
+  - name: "Create Tenant Billing"
+    description: "Setup billing for the tenant"
+    type: "database"
+    steps:
+      - name: "Create billing subscription"
+        action: "execute"
+        query: |
+          INSERT INTO subscriptions (
+            organization_id, plan, status, billing_cycle, 
+            created_at, updated_at
+          ) VALUES (
+            {{ organization_id }}, '{{ tenant_plan }}', 'active', 'monthly',
+            NOW(), NOW()
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Create billing invoice"
+        action: "execute"
+        query: |
+          INSERT INTO invoices (
+            organization_id, amount, currency, status, 
+            due_date, created_at, updated_at
+          ) VALUES (
+            {{ organization_id }}, 0, 'USD', 'paid',
+            NOW() + INTERVAL '30 days', NOW(), NOW()
+          )
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+
+  - name: "Send Welcome Email"
+    description: "Send welcome email to the tenant"
+    type: "email"
+    steps:
+      - name: "Send welcome email"
+        action: "send"
+        template: "tenant-welcome"
+        to: "{{ tenant_email }}"
+        subject: "Welcome to LexiScan AI - {{ tenant_name }}"
+        variables:
+          tenant_name: "{{ tenant_name }}"
+          tenant_slug: "{{ tenant_slug }}"
+          admin_user_email: "{{ admin_user_email }}"
+          login_url: "https://{{ tenant_slug }}.lexiscan.ai/login"
+          dashboard_url: "https://{{ tenant_slug }}.lexiscan.ai/dashboard"
+          support_email: "support@lexiscan.ai"
+          documentation_url: "https://docs.lexiscan.ai"
+
+  - name: "Verify Tenant Setup"
+    description: "Verify that the tenant setup is complete and working"
+    type: "verification"
+    steps:
+      - name: "Check tenant services"
+        action: "kubectl"
+        command: "get pods -n tenant-{{ tenant_slug }}"
+        expected_status: "Running"
+      
+      - name: "Check tenant ingress"
+        action: "kubectl"
+        command: "get ingress -n tenant-{{ tenant_slug }}"
+        expected_status: "Ready"
+      
+      - name: "Check tenant database"
+        action: "database"
+        query: "SELECT COUNT(*) FROM organizations WHERE slug = '{{ tenant_slug }}'"
+        expected_result: "1"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Check tenant user"
+        action: "database"
+        query: "SELECT COUNT(*) FROM users WHERE email = '{{ admin_user_email }}'"
+        expected_result: "1"
+        database: "lexiscan"
+        connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+      
+      - name: "Test tenant API"
+        action: "http"
+        method: "GET"
+        url: "https://{{ tenant_slug }}.lexiscan.ai/api/health"
+        expected_status: "200"
+      
+      - name: "Test tenant web"
+        action: "http"
+        method: "GET"
+        url: "https://{{ tenant_slug }}.lexiscan.ai/"
+        expected_status: "200"
+
+# Playbook completion
+completion:
+  success_message: "Tenant {{ tenant_name }} ({{ tenant_slug }}) has been successfully onboarded"
+  failure_message: "Tenant onboarding failed. Please check the logs and retry"
+  next_steps:
+    - "Send welcome email to tenant"
+    - "Schedule onboarding call with tenant"
+    - "Provide tenant with access credentials"
+    - "Monitor tenant services for 24 hours"
+    - "Follow up with tenant after 7 days"
+
+# Playbook rollback
+rollback:
+  description: "Rollback tenant onboarding if needed"
+  steps:
+    - name: "Delete tenant resources"
+      action: "kubectl"
+      command: "delete namespace tenant-{{ tenant_slug }}"
+    
+    - name: "Delete tenant database records"
+      action: "database"
+      query: "DELETE FROM organizations WHERE slug = '{{ tenant_slug }}'"
+      database: "lexiscan"
+      connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
+    
+    - name: "Delete tenant user"
+      action: "database"
+      query: "DELETE FROM users WHERE email = '{{ admin_user_email }}'"
+      database: "lexiscan"
+      connection: "postgresql://lexiscan:password@postgres:5432/lexiscan"
