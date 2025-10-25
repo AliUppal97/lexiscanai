@@ -1,0 +1,290 @@
+---
+# PostgreSQL StatefulSet for LexiScan AI
+#
+# Purpose:
+# - Provides persistent database for application data
+# - Ensures data durability and consistency
+# - Supports replication and failover
+#
+# Features:
+# - StatefulSet for stable network identity
+# - Persistent volume claims for data
+# - Init container for database initialization
+# - Backup integration
+# - High availability with replicas
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: lexiscan-ai
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: postgres
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: lexiscan-ai
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres-service
+  replicas: 1  # Single primary (can be upgraded to HA setup)
+  
+  selector:
+    matchLabels:
+      app: postgres
+  
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - name: postgres
+          containerPort: 5432
+          protocol: TCP
+        
+        envFrom:
+        - secretRef:
+            name: postgres-admin-secret
+        
+        env:
+        - name: POSTGRES_INITDB_ARGS
+          value: "--encoding=UTF8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+      
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+      - name: postgres-init
+        configMap:
+          name: postgres-init-scripts
+  
+  # Persistent Volume Claim template
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+      labels:
+        app: postgres
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "fast-ssd"  # Use appropriate storage class
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+# PostgreSQL Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: lexiscan-ai
+data:
+  postgresql.conf: |
+    # Connection settings
+    max_connections = 200
+    shared_buffers = 2GB
+    effective_cache_size = 6GB
+    maintenance_work_mem = 512MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 10485kB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    max_worker_processes = 4
+    max_parallel_workers_per_gather = 2
+    max_parallel_workers = 4
+    max_parallel_maintenance_workers = 2
+    
+    # Logging
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_duration = off
+    log_lock_waits = on
+    log_statement = 'none'
+    log_temp_files = 0
+    
+    # Replication
+    wal_level = replica
+    max_wal_senders = 5
+    max_replication_slots = 5
+    hot_standby = on
+    
+    # Performance
+    shared_preload_libraries = 'pg_stat_statements'
+    pg_stat_statements.track = all
+
+---
+# PostgreSQL Initialization Scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: lexiscan-ai
+data:
+  01-init-db.sql: |
+    -- Create extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+    CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+    
+    -- Create schemas
+    CREATE SCHEMA IF NOT EXISTS lexiscan;
+    CREATE SCHEMA IF NOT EXISTS audit;
+    
+    -- Set default search path
+    ALTER DATABASE lexiscan_production SET search_path TO lexiscan, public;
+  
+  02-create-roles.sql: |
+    -- Create read-only role
+    CREATE ROLE readonly;
+    GRANT CONNECT ON DATABASE lexiscan_production TO readonly;
+    GRANT USAGE ON SCHEMA lexiscan TO readonly;
+    GRANT SELECT ON ALL TABLES IN SCHEMA lexiscan TO readonly;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA lexiscan GRANT SELECT ON TABLES TO readonly;
+    
+    -- Create application role
+    CREATE ROLE app_user WITH LOGIN PASSWORD 'CHANGEME';
+    GRANT CONNECT ON DATABASE lexiscan_production TO app_user;
+    GRANT ALL PRIVILEGES ON SCHEMA lexiscan TO app_user;
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA lexiscan TO app_user;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA lexiscan GRANT ALL ON TABLES TO app_user;
+
+---
+# PostgreSQL Backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: lexiscan-ai
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: lexiscan-api-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              BACKUP_FILE="/backups/lexiscan-$(date +%Y%m%d-%H%M%S).sql.gz"
+              pg_dump -h postgres-service -U $POSTGRES_USER -d $POSTGRES_DB | gzip > $BACKUP_FILE
+              echo "Backup completed: $BACKUP_FILE"
+              # Upload to S3 (requires aws-cli)
+              # aws s3 cp $BACKUP_FILE s3://lexiscan-backups/postgres/
+            envFrom:
+            - secretRef:
+                name: postgres-admin-secret
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: postgres-backup-pvc
+
+---
+# Backup PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-pvc
+  namespace: lexiscan-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: "standard"
+  resources:
+    requests:
+      storage: 500Gi
+

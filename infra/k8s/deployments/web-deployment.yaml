@@ -1,0 +1,210 @@
+---
+# LexiScan AI Web Application Deployment
+#
+# Purpose:
+# - Deploys the Next.js frontend application
+# - Serves the user interface
+# - Handles client-side routing and rendering
+#
+# Features:
+# - Server-side rendering (SSR) support
+# - Static asset serving with CDN
+# - High availability
+# - Auto-scaling based on traffic
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-deployment
+  namespace: lexiscan-ai
+  labels:
+    app: web
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: lexiscan-ai
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 3
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  
+  revisionHistoryLimit: 10
+  
+  selector:
+    matchLabels:
+      app: web
+      app.kubernetes.io/name: lexiscan-ai
+      app.kubernetes.io/component: web
+  
+  template:
+    metadata:
+      labels:
+        app: web
+        app.kubernetes.io/name: lexiscan-ai
+        app.kubernetes.io/component: web
+        app.kubernetes.io/version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+        prometheus.io/path: "/metrics"
+    
+    spec:
+      serviceAccountName: lexiscan-web-sa
+      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web
+              topologyKey: kubernetes.io/hostname
+      
+      containers:
+      - name: web
+        image: lexiscan/web:latest
+        imagePullPolicy: IfNotPresent
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        
+        ports:
+        - name: http
+          containerPort: 3001
+          protocol: TCP
+        - name: metrics
+          containerPort: 9091
+          protocol: TCP
+        
+        envFrom:
+        - configMapRef:
+            name: lexiscan-ai-config
+        
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/.next/cache
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+      
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      
+      imagePullSecrets:
+      - name: registry-credentials
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  namespace: lexiscan-ai
+  labels:
+    app: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-deployment
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-pdb
+  namespace: lexiscan-ai
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: web
+

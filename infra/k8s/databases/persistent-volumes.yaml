@@ -1,0 +1,286 @@
+---
+# Persistent Volumes and Storage Classes for LexiScan AI
+#
+# Purpose:
+# - Defines storage classes for different workload types
+# - Configures persistent volumes
+# - Manages storage lifecycle
+#
+# Storage Tiers:
+# - fast-ssd: High-performance SSD for databases
+# - standard: Standard persistent disk for backups
+# - archive: Low-cost storage for long-term retention
+
+# Storage Class for Fast SSD (Databases, Cache)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: storage
+provisioner: kubernetes.io/aws-ebs  # or kubernetes.io/gce-pd for GCP
+parameters:
+  type: gp3  # AWS EBS gp3 (or pd-ssd for GCP)
+  iopsPerGB: "50"
+  throughput: "500"  # MB/s
+  encrypted: "true"
+  kmsKeyId: "arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain  # Keep data even if PVC is deleted
+
+---
+# Storage Class for Standard Persistent Disk
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: storage
+provisioner: kubernetes.io/aws-ebs  # or kubernetes.io/gce-pd for GCP
+parameters:
+  type: gp2  # AWS EBS gp2 (or pd-standard for GCP)
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+
+---
+# Storage Class for Archive/Cold Storage
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: archive
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: storage
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: sc1  # Cold HDD
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+
+---
+# Persistent Volume for Document Storage (if not using S3)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: documents-pv
+  labels:
+    type: documents
+    app.kubernetes.io/name: lexiscan-ai
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany  # Shared across multiple pods
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    server: nfs-server.example.com
+    path: /exports/lexiscan/documents
+
+---
+# Persistent Volume Claim for Documents
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: documents-pvc
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Ti
+  selector:
+    matchLabels:
+      type: documents
+
+---
+# Volume Snapshot Class (for backups)
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: lexiscan-snapshot-class
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+driver: ebs.csi.aws.com  # or pd.csi.storage.gke.io for GCP
+deletionPolicy: Retain
+parameters:
+  encrypted: "true"
+
+---
+# Example Volume Snapshot (scheduled via CronJob)
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: postgres-snapshot
+  namespace: lexiscan-ai
+spec:
+  volumeSnapshotClassName: lexiscan-snapshot-class
+  source:
+    persistentVolumeClaimName: postgres-data-postgres-0
+
+---
+# CronJob for Automated Volume Snapshots
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: volume-snapshot-backup
+  namespace: lexiscan-ai
+spec:
+  schedule: "0 4 * * *"  # Daily at 4 AM
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: lexiscan-api-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: snapshot-creator
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+              
+              # Create PostgreSQL snapshot
+              kubectl create -f - <<EOF
+              apiVersion: snapshot.storage.k8s.io/v1
+              kind: VolumeSnapshot
+              metadata:
+                name: postgres-snapshot-$TIMESTAMP
+                namespace: lexiscan-ai
+              spec:
+                volumeSnapshotClassName: lexiscan-snapshot-class
+                source:
+                  persistentVolumeClaimName: postgres-data-postgres-0
+              EOF
+              
+              # Create Redis snapshot
+              kubectl create -f - <<EOF
+              apiVersion: snapshot.storage.k8s.io/v1
+              kind: VolumeSnapshot
+              metadata:
+                name: redis-snapshot-$TIMESTAMP
+                namespace: lexiscan-ai
+              spec:
+                volumeSnapshotClassName: lexiscan-snapshot-class
+                source:
+                  persistentVolumeClaimName: redis-data-pvc
+              EOF
+              
+              echo "Snapshots created for $TIMESTAMP"
+              
+              # Cleanup old snapshots (keep last 7 days)
+              kubectl get volumesnapshots -n lexiscan-ai --sort-by=.metadata.creationTimestamp | \
+                head -n -7 | \
+                awk '{print $1}' | \
+                xargs -r kubectl delete volumesnapshot -n lexiscan-ai
+
+---
+# PVC for Logs (centralized logging)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: logging
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# PVC for Monitoring Data (Prometheus)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data-pvc
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+# PVC for Grafana Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data-pvc
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# NOTES ON STORAGE BEST PRACTICES:
+#
+# 1. Storage Classes:
+#    - Use appropriate storage class for workload
+#    - fast-ssd for databases and cache
+#    - standard for general purpose
+#    - archive for long-term retention
+#
+# 2. Backup Strategy:
+#    - Use volume snapshots for point-in-time backups
+#    - Implement automated snapshot creation
+#    - Test restore procedures regularly
+#    - Store backups in different regions
+#
+# 3. Monitoring:
+#    - Monitor disk usage and IOPS
+#    - Set alerts for storage capacity
+#    - Track snapshot costs
+#    - Monitor backup job success/failure
+#
+# 4. Encryption:
+#    - Always encrypt data at rest
+#    - Use KMS for key management
+#    - Rotate encryption keys regularly
+#
+# 5. Performance:
+#    - Use provisioned IOPS for critical workloads
+#    - Monitor and adjust based on metrics
+#    - Consider local NVMe for ultra-low latency
+#
+# 6. Cost Optimization:
+#    - Use lifecycle policies for old snapshots
+#    - Compress backups
+#    - Use cheaper storage for archives
+#    - Delete unused volumes
+

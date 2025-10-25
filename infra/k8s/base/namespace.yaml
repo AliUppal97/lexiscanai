@@ -1,0 +1,239 @@
+---
+# Kubernetes Namespace for LexiScan AI
+# 
+# Purpose:
+# - Provides logical isolation for all LexiScan AI resources
+# - Enables resource quotas and network policies at namespace level
+# - Facilitates multi-environment deployment (dev, staging, prod)
+#
+# Security Features:
+# - Namespace-scoped RBAC policies
+# - Network policies for traffic isolation
+# - Resource quotas to prevent resource exhaustion
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lexiscan-ai
+  labels:
+    name: lexiscan-ai
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: lexiscan-ai
+    environment: production
+    team: platform
+
+---
+# Resource Quota
+# Prevents any single tenant or service from consuming all cluster resources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lexiscan-ai-quota
+  namespace: lexiscan-ai
+spec:
+  hard:
+    # Compute Resources
+    requests.cpu: "100"        # Total CPU requests across namespace
+    requests.memory: 200Gi     # Total memory requests across namespace
+    limits.cpu: "200"          # Total CPU limits across namespace
+    limits.memory: 400Gi       # Total memory limits across namespace
+    
+    # Storage
+    requests.storage: 1Ti      # Total persistent volume claims
+    persistentvolumeclaims: "50"
+    
+    # Object Counts
+    pods: "200"                # Maximum number of pods
+    services: "50"             # Maximum number of services
+    secrets: "100"             # Maximum number of secrets
+    configmaps: "50"           # Maximum number of configmaps
+    replicationcontrollers: "50"
+    
+---
+# Limit Range
+# Sets default resource limits for containers without explicit limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: lexiscan-ai-limits
+  namespace: lexiscan-ai
+spec:
+  limits:
+  # Container level limits
+  - type: Container
+    default:
+      # Default limits if not specified
+      cpu: 1000m
+      memory: 2Gi
+    defaultRequest:
+      # Default requests if not specified
+      cpu: 100m
+      memory: 256Mi
+    max:
+      # Maximum allowed per container
+      cpu: 4000m
+      memory: 8Gi
+    min:
+      # Minimum required per container
+      cpu: 50m
+      memory: 64Mi
+    maxLimitRequestRatio:
+      # Maximum ratio between limit and request
+      cpu: 4
+      memory: 4
+  
+  # Pod level limits
+  - type: Pod
+    max:
+      cpu: 8000m
+      memory: 16Gi
+    min:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Persistent Volume Claim limits
+  - type: PersistentVolumeClaim
+    max:
+      storage: 100Gi
+    min:
+      storage: 1Gi
+
+---
+# Network Policy
+# Controls traffic flow between pods for enhanced security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lexiscan-ai-network-policy
+  namespace: lexiscan-ai
+spec:
+  # Apply to all pods in namespace
+  podSelector: {}
+  
+  policyTypes:
+  - Ingress
+  - Egress
+  
+  # Ingress rules (incoming traffic)
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000  # API
+    - protocol: TCP
+      port: 3001  # Web
+  
+  # Allow traffic within namespace (service-to-service)
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 3001
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+  
+  # Egress rules (outgoing traffic)
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  
+  # Allow traffic within namespace
+  - to:
+    - podSelector: {}
+  
+  # Allow external HTTPS (for API calls to Stripe, AWS, etc.)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+  
+  # Allow PostgreSQL and Redis within namespace
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+# Pod Security Policy (if enabled in cluster)
+# Defines security standards for pods in the namespace
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: lexiscan-ai-psp
+  namespace: lexiscan-ai
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+spec:
+  # Prevent privilege escalation
+  privileged: false
+  allowPrivilegeEscalation: false
+  
+  # Run as non-root
+  runAsUser:
+    rule: MustRunAsNonRoot
+  
+  # Filesystem
+  fsGroup:
+    rule: RunAsAny
+  
+  # Volumes
+  volumes:
+  - 'configMap'
+  - 'emptyDir'
+  - 'projected'
+  - 'secret'
+  - 'downwardAPI'
+  - 'persistentVolumeClaim'
+  
+  # Networking
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  
+  # SELinux
+  seLinux:
+    rule: RunAsAny
+  
+  # Supplemental Groups
+  supplementalGroups:
+    rule: RunAsAny
+  
+  # Read-only root filesystem
+  readOnlyRootFilesystem: true
+  
+  # Required security capabilities
+  requiredDropCapabilities:
+  - ALL
+  
+  allowedCapabilities: []
+

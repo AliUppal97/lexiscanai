@@ -1,0 +1,67 @@
+---
+# LexiScan AI Web Service
+#
+# Purpose:
+# - Exposes the web application deployment
+# - Load balances traffic across web pods
+# - Provides stable endpoint for frontend
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: lexiscan-ai
+  labels:
+    app: web
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: web
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9091"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9091
+    targetPort: metrics
+    protocol: TCP
+  
+  selector:
+    app: web
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: web
+
+---
+# PDF Generator Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: pdf-generator-service
+  namespace: lexiscan-ai
+  labels:
+    app: pdf-generator
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: pdf-generator
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: pdf-generator
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: pdf-generator
+

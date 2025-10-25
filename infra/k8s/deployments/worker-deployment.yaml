@@ -1,0 +1,221 @@
+---
+# LexiScan AI Worker Deployment
+#
+# Purpose:
+# - Processes background jobs and async tasks
+# - Handles document processing
+# - Manages queue consumption
+# - AI/ML model inference
+#
+# Features:
+# - Dedicated worker pools
+# - Job-based scaling
+# - Resource-intensive operations isolation
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  namespace: lexiscan-ai
+  labels:
+    app: worker
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: lexiscan-ai
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 2
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero downtime for job processing
+  
+  revisionHistoryLimit: 10
+  
+  selector:
+    matchLabels:
+      app: worker
+      app.kubernetes.io/name: lexiscan-ai
+      app.kubernetes.io/component: worker
+  
+  template:
+    metadata:
+      labels:
+        app: worker
+        app.kubernetes.io/name: lexiscan-ai
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9092"
+        prometheus.io/path: "/metrics"
+    
+    spec:
+      serviceAccountName: lexiscan-worker-sa
+      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # Node selector for worker nodes (if available)
+      nodeSelector:
+        workload-type: worker
+      
+      # Toleration for dedicated worker nodes
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "worker"
+        effect: "NoSchedule"
+      
+      containers:
+      - name: worker
+        image: lexiscan/ai-worker:latest
+        imagePullPolicy: IfNotPresent
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # May need write access for ML models
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        
+        ports:
+        - name: metrics
+          containerPort: 9092
+          protocol: TCP
+        
+        envFrom:
+        - configMapRef:
+            name: lexiscan-ai-config
+        - secretRef:
+            name: lexiscan-ai-secrets
+        
+        env:
+        - name: WORKER_TYPE
+          value: "general"
+        - name: WORKER_CONCURRENCY
+          value: "5"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        # Higher resources for AI/ML workloads
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+            # GPU (if available)
+            # nvidia.com/gpu: 1
+        
+        # Liveness probe for worker process
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ps aux | grep -v grep | grep worker
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: models
+          mountPath: /app/models
+        - name: cache
+          mountPath: /app/.cache
+      
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: models
+        emptyDir:
+          sizeLimit: 10Gi
+      - name: cache
+        emptyDir: {}
+      
+      # Longer termination grace period for job completion
+      terminationGracePeriodSeconds: 120
+      
+      imagePullSecrets:
+      - name: registry-credentials
+
+---
+# KEDA ScaledObject for queue-based scaling
+# Scales workers based on queue depth
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaledobject
+  namespace: lexiscan-ai
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  # Redis queue length trigger
+  - type: redis
+    metadata:
+      addressFromEnv: REDIS_HOST
+      listName: document-processing-queue
+      listLength: "5"
+      databaseIndex: "0"
+    authenticationRef:
+      name: redis-trigger-auth
+
+---
+# TriggerAuthentication for KEDA
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: redis-trigger-auth
+  namespace: lexiscan-ai
+spec:
+  secretTargetRef:
+  - parameter: password
+    name: redis-secret
+    key: REDIS_PASSWORD
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-pdb
+  namespace: lexiscan-ai
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: worker
+

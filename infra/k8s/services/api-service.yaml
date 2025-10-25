@@ -1,0 +1,75 @@
+---
+# LexiScan AI API Service
+#
+# Purpose:
+# - Exposes the API deployment as a network service
+# - Provides stable endpoint for API access
+# - Load balances traffic across API pods
+#
+# Service Type: ClusterIP (internal only)
+# Access: Through Ingress Controller
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: lexiscan-ai
+  labels:
+    app: api
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: api
+  annotations:
+    # Prometheus annotations for service discovery
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+    # Service mesh annotations (if using Istio/Linkerd)
+    # service.beta.kubernetes.io/aws-load-balancer-backend-protocol: http
+spec:
+  type: ClusterIP
+  
+  # Session affinity for sticky sessions (if needed)
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  
+  selector:
+    app: api
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: api
+
+---
+# Headless Service for StatefulSet (if needed for direct pod access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-headless
+  namespace: lexiscan-ai
+  labels:
+    app: api
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: api
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: api
+

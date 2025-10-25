@@ -1,0 +1,288 @@
+---
+# LexiScan AI Ingress Configuration
+#
+# Purpose:
+# - Routes external HTTP/HTTPS traffic to services
+# - Handles TLS termination
+# - Implements path-based routing
+# - Provides SSL/TLS certificates
+#
+# Requirements:
+# - Ingress controller (nginx, traefik, etc.) must be installed
+# - TLS certificates configured in secrets
+# - DNS records pointing to load balancer
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lexiscan-ai-ingress
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Ingress class
+    kubernetes.io/ingress.class: "nginx"
+    
+    # Certificate management (cert-manager)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/acme-challenge-type: "http01"
+    
+    # SSL/TLS configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://lexiscan.ai,https://app.lexiscan.ai"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: no-referrer-when-downgrade";
+      more_set_headers "Permissions-Policy: geolocation=(), microphone=(), camera=()";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+    
+    # Load balancing
+    nginx.ingress.kubernetes.io/load-balance: "ewma"  # Exponentially Weighted Moving Average
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    
+    # WebSocket support
+    nginx.ingress.kubernetes.io/websocket-services: "api-service"
+    
+    # Monitoring
+    nginx.ingress.kubernetes.io/enable-opentelemetry: "true"
+
+spec:
+  # TLS configuration
+  tls:
+  - hosts:
+    - api.lexiscan.ai
+    - app.lexiscan.ai
+    - lexiscan.ai
+    - www.lexiscan.ai
+    secretName: lexiscan-tls-cert
+  
+  # Routing rules
+  rules:
+  # API domain
+  - host: api.lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 80
+      
+      # Health check endpoint
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 80
+      
+      # Metrics endpoint (protected)
+      - path: /metrics
+        pathType: Exact
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 9090
+  
+  # Web application domain
+  - host: app.lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+  
+  # Main domain (redirects to app)
+  - host: lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+  
+  # WWW redirect
+  - host: www.lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+
+---
+# Certificate Issuer (cert-manager)
+# Production Let's Encrypt issuer
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Let's Encrypt production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+    
+    # Email for urgent renewal and security notices
+    email: ops@lexiscan.ai
+    
+    # Private key secret
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    
+    # Solvers for challenge
+    solvers:
+    # HTTP-01 challenge
+    - http01:
+        ingress:
+          class: nginx
+    
+    # DNS-01 challenge (for wildcard certificates)
+    - dns01:
+        route53:
+          region: us-east-1
+          # AWS credentials via IRSA
+          hostedZoneID: Z1234567890ABC
+
+---
+# Staging Let's Encrypt issuer (for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ops@lexiscan.ai
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# Ingress for Internal Services (monitoring, etc.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lexiscan-ai-internal-ingress
+  namespace: lexiscan-ai
+  labels:
+    app.kubernetes.io/name: lexiscan-ai
+    app.kubernetes.io/component: ingress-internal
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "basic-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required - LexiScan AI Internal"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+spec:
+  tls:
+  - hosts:
+    - monitoring.lexiscan.ai
+    - grafana.lexiscan.ai
+    - prometheus.lexiscan.ai
+    secretName: lexiscan-internal-tls
+  
+  rules:
+  # Prometheus
+  - host: prometheus.lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-service
+            port:
+              number: 9090
+  
+  # Grafana
+  - host: grafana.lexiscan.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana-service
+            port:
+              number: 3000
+
+---
+# Basic Auth Secret for Internal Services
+apiVersion: v1
+kind: Secret
+metadata:
+  name: basic-auth
+  namespace: lexiscan-ai
+type: Opaque
+data:
+  # Generated with: htpasswd -c auth admin
+  # username: admin, password: CHANGEME
+  auth: YWRtaW46JGFwcjEkSDY1dnJsVXkkRzl0Q2VyT2pQd3Vna2FmL01JM21WLgo=
+
+---
+# Network Policy for Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-traffic
+  namespace: lexiscan-ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lexiscan-ai
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 3001
+    - protocol: TCP
+      port: 8000
+
