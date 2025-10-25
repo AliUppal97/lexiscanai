@@ -1,0 +1,261 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "LexiScan AI - API Performance Dashboard",
+    "description": "Comprehensive API performance monitoring for LexiScan AI backend services",
+    "tags": ["lexiscan", "api", "performance", "backend"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "API Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"lexiscan-api\"}",
+            "legendFormat": "API Service"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "DOWN"},
+              {"type": "value", "value": "1", "text": "UP"}
+            ]
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate (RPS)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"lexiscan-api\"}[5m])",
+            "legendFormat": "{{ method }} {{ endpoint }}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Requests per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Response Time (95th percentile)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"lexiscan-api\"}[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"lexiscan-api\"}[5m]))",
+            "legendFormat": "50th percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Response Time (seconds)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 18, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"lexiscan-api\",status=~\"5..\"}[5m]) / rate(http_requests_total{job=\"lexiscan-api\"}[5m]) * 100",
+            "legendFormat": "5xx Error Rate %"
+          },
+          {
+            "expr": "rate(http_requests_total{job=\"lexiscan-api\",status=~\"4..\"}[5m]) / rate(http_requests_total{job=\"lexiscan-api\"}[5m]) * 100",
+            "legendFormat": "4xx Error Rate %"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Error Rate (%)",
+            "min": 0,
+            "max": 100
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Active Connections",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "nodejs_active_handles{job=\"lexiscan-api\"}",
+            "legendFormat": "Active Handles"
+          },
+          {
+            "expr": "nodejs_active_requests{job=\"lexiscan-api\"}",
+            "legendFormat": "Active Requests"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "nodejs_heap_size_used_bytes{job=\"lexiscan-api\"} / 1024 / 1024",
+            "legendFormat": "Heap Used (MB)"
+          },
+          {
+            "expr": "nodejs_heap_size_total_bytes{job=\"lexiscan-api\"} / 1024 / 1024",
+            "legendFormat": "Heap Total (MB)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Memory (MB)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 18, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Database Connection Pool",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "database_connections_active{job=\"lexiscan-api\"}",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "database_connections_idle{job=\"lexiscan-api\"}",
+            "legendFormat": "Idle Connections"
+          },
+          {
+            "expr": "database_connections_total{job=\"lexiscan-api\"}",
+            "legendFormat": "Total Connections"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Connections",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "Cache Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(redis_commands_total{job=\"lexiscan-api\",command=\"get\"}[5m])",
+            "legendFormat": "Cache Hits"
+          },
+          {
+            "expr": "rate(redis_commands_total{job=\"lexiscan-api\",command=\"set\"}[5m])",
+            "legendFormat": "Cache Sets"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Operations per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Queue Processing",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(jobs_processed_total{job=\"lexiscan-api\"}[5m])",
+            "legendFormat": "Jobs Processed/sec"
+          },
+          {
+            "expr": "queue_length{job=\"lexiscan-api\"}",
+            "legendFormat": "Queue Length"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Jobs",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 16}
+      },
+      {
+        "id": 10,
+        "title": "API Endpoints Performance",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, rate(http_requests_total{job=\"lexiscan-api\"}[5m]))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      },
+      {
+        "id": 11,
+        "title": "Slow Queries",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, rate(database_query_duration_seconds{job=\"lexiscan-api\"}[5m]))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 24}
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "deployment_timestamp",
+          "iconColor": "blue"
+        }
+      ]
+    }
+  }
+}

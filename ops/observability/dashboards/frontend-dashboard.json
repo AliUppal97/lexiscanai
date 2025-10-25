@@ -1,0 +1,278 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "LexiScan AI - Frontend Performance Dashboard",
+    "description": "Frontend application performance monitoring for LexiScan AI web applications",
+    "tags": ["lexiscan", "frontend", "performance", "web"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Frontend Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=~\"lexiscan-web|lexiscan-dashboard\"}",
+            "legendFormat": "{{ job }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Page Load Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(frontend_page_load_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(frontend_page_load_duration_seconds_bucket[5m]))",
+            "legendFormat": "50th percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Load Time (seconds)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "User Sessions",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(frontend_sessions_total[5m])",
+            "legendFormat": "New Sessions/sec"
+          },
+          {
+            "expr": "frontend_active_sessions",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Sessions",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 18, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Core Web Vitals",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.75, rate(frontend_lcp_seconds_bucket[5m]))",
+            "legendFormat": "LCP (75th percentile)"
+          },
+          {
+            "expr": "histogram_quantile(0.75, rate(frontend_fid_seconds_bucket[5m]))",
+            "legendFormat": "FID (75th percentile)"
+          },
+          {
+            "expr": "histogram_quantile(0.75, rate(frontend_cls_bucket[5m]))",
+            "legendFormat": "CLS (75th percentile)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Web Vitals",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "JavaScript Errors",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(frontend_js_errors_total[5m])",
+            "legendFormat": "JS Errors/sec"
+          },
+          {
+            "expr": "rate(frontend_js_errors_total{severity=\"fatal\"}[5m])",
+            "legendFormat": "Fatal Errors/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Errors per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "API Calls from Frontend",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(frontend_api_calls_total[5m])",
+            "legendFormat": "API Calls/sec"
+          },
+          {
+            "expr": "rate(frontend_api_calls_total{status=~\"4..|5..\"}[5m])",
+            "legendFormat": "Failed API Calls/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "API Calls per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Resource Loading",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(frontend_resource_loads_total{type=\"css\"}[5m])",
+            "legendFormat": "CSS Files/sec"
+          },
+          {
+            "expr": "rate(frontend_resource_loads_total{type=\"js\"}[5m])",
+            "legendFormat": "JS Files/sec"
+          },
+          {
+            "expr": "rate(frontend_resource_loads_total{type=\"image\"}[5m])",
+            "legendFormat": "Images/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Resources per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "User Interactions",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(frontend_clicks_total[5m])",
+            "legendFormat": "Clicks/sec"
+          },
+          {
+            "expr": "rate(frontend_form_submissions_total[5m])",
+            "legendFormat": "Form Submissions/sec"
+          },
+          {
+            "expr": "rate(frontend_navigation_total[5m])",
+            "legendFormat": "Page Navigation/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Interactions per Second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Browser Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(frontend_ttfb_seconds_bucket[5m]))",
+            "legendFormat": "TTFB (95th percentile)"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(frontend_dom_content_loaded_seconds_bucket[5m]))",
+            "legendFormat": "DOM Content Loaded (95th percentile)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Time (seconds)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 16}
+      },
+      {
+        "id": 10,
+        "title": "Top Pages by Traffic",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, rate(frontend_page_views_total[5m]))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 11,
+        "title": "Browser Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (browser) (rate(frontend_sessions_total[5m]))",
+            "legendFormat": "{{ browser }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      },
+      {
+        "id": 12,
+        "title": "Geographic Distribution",
+        "type": "worldmap",
+        "targets": [
+          {
+            "expr": "sum by (country) (rate(frontend_sessions_total[5m]))",
+            "legendFormat": "{{ country }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 24}
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "deployment_timestamp",
+          "iconColor": "blue"
+        }
+      ]
+    }
+  }
+}

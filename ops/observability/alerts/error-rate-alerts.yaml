@@ -1,0 +1,358 @@
+# Error Rate Alerts Configuration for LexiScan AI
+#
+# Purpose:
+# - Monitors application error rates across all services
+# - Detects error spikes and patterns
+# - Alerts on critical error conditions
+# - Ensures service reliability and user experience
+#
+# Alert Categories:
+# - HTTP Error Rates
+# - Application Errors
+# - Database Errors
+# - External Service Errors
+# - Business Logic Errors
+
+groups:
+  # HTTP Error Rate Alerts
+  - name: lexiscan.errors.http
+    rules:
+      - alert: HighHTTPErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "High HTTP 5xx error rate detected"
+          description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} for service {{ $labels.job }}, exceeding 5% threshold"
+
+      - alert: CriticalHTTPErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "Critical HTTP 5xx error rate detected"
+          description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} for service {{ $labels.job }}, exceeding 10% threshold"
+
+      - alert: HighHTTP4xxErrorRate
+        expr: rate(http_requests_total{status=~"4.."}[5m]) / rate(http_requests_total[5m]) > 0.2
+        for: 3m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "High HTTP 4xx error rate detected"
+          description: "HTTP 4xx error rate is {{ $value | humanizePercentage }} for service {{ $labels.job }}, exceeding 20% threshold"
+
+      - alert: ServiceUnavailable
+        expr: rate(http_requests_total{status="503"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "Service unavailable (503) errors detected"
+          description: "Service {{ $labels.job }} is returning 503 errors at {{ $value }} per second"
+
+  # Application Error Alerts
+  - name: lexiscan.errors.application
+    rules:
+      - alert: HighApplicationErrorRate
+        expr: rate(application_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "High application error rate detected"
+          description: "Application error rate is {{ $value }} errors/second for service {{ $labels.job }}"
+
+      - alert: CriticalApplicationErrorRate
+        expr: rate(application_errors_total[5m]) > 20
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "Critical application error rate detected"
+          description: "Application error rate is {{ $value }} errors/second for service {{ $labels.job }}"
+
+      - alert: UnhandledExceptions
+        expr: rate(application_errors_total{type="unhandled_exception"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "Unhandled exceptions detected"
+          description: "Unhandled exceptions are occurring at {{ $value }} per second in service {{ $labels.job }}"
+
+      - alert: MemoryErrors
+        expr: rate(application_errors_total{type="memory_error"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "Memory errors detected"
+          description: "Memory errors are occurring at {{ $value }} per second in service {{ $labels.job }}"
+
+  # Database Error Alerts
+  - name: lexiscan.errors.database
+    rules:
+      - alert: HighDatabaseErrorRate
+        expr: rate(database_errors_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "High database error rate detected"
+          description: "Database error rate is {{ $value }} errors/second"
+
+      - alert: DatabaseConnectionErrors
+        expr: rate(database_errors_total{type="connection_error"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database connection errors detected"
+          description: "Database connection errors are occurring at {{ $value }} per second"
+
+      - alert: DatabaseQueryErrors
+        expr: rate(database_errors_total{type="query_error"}[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database query errors detected"
+          description: "Database query errors are occurring at {{ $value }} per second"
+
+      - alert: DatabaseTimeoutErrors
+        expr: rate(database_errors_total{type="timeout"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database timeout errors detected"
+          description: "Database timeout errors are occurring at {{ $value }} per second"
+
+  # External Service Error Alerts
+  - name: lexiscan.errors.external
+    rules:
+      - alert: HighExternalServiceErrorRate
+        expr: rate(external_service_errors_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "High external service error rate detected"
+          description: "External service error rate is {{ $value }} errors/second for service {{ $labels.job }}"
+
+      - alert: ExternalServiceDown
+        expr: rate(external_service_errors_total{type="service_unavailable"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "External service is down"
+          description: "External service {{ $labels.service_name }} is returning unavailable errors"
+
+      - alert: ExternalServiceTimeout
+        expr: rate(external_service_errors_total{type="timeout"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "External service timeout errors detected"
+          description: "External service {{ $labels.service_name }} is timing out at {{ $value }} per second"
+
+      - alert: ExternalServiceRateLimit
+        expr: rate(external_service_errors_total{type="rate_limit"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+          team: "backend"
+        annotations:
+          summary: "External service rate limit exceeded"
+          description: "External service {{ $labels.service_name }} is rate limiting requests"
+
+  # Business Logic Error Alerts
+  - name: lexiscan.errors.business
+    rules:
+      - alert: DocumentProcessingErrors
+        expr: rate(documents_processed_total{status="failed"}[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: "document-processing"
+          team: "backend"
+        annotations:
+          summary: "Document processing errors detected"
+          description: "Document processing is failing at {{ $value }} per second"
+
+      - alert: HighDocumentProcessingErrorRate
+        expr: rate(documents_processed_total{status="failed"}[5m]) / rate(documents_processed_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: critical
+          service: "document-processing"
+          team: "backend"
+        annotations:
+          summary: "High document processing error rate"
+          description: "Document processing error rate is {{ $value | humanizePercentage }}, exceeding 10% threshold"
+
+      - alert: AIProcessingErrors
+        expr: rate(ai_processing_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: "ai-worker"
+          team: "backend"
+        annotations:
+          summary: "AI processing errors detected"
+          description: "AI processing errors are occurring at {{ $value }} per second"
+
+      - alert: PaymentProcessingErrors
+        expr: rate(payment_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "billing"
+          team: "backend"
+        annotations:
+          summary: "Payment processing errors detected"
+          description: "Payment processing errors are occurring at {{ $value }} per second"
+
+  # Cache Error Alerts
+  - name: lexiscan.errors.cache
+    rules:
+      - alert: CacheErrors
+        expr: rate(cache_errors_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: "cache"
+          team: "backend"
+        annotations:
+          summary: "Cache errors detected"
+          description: "Cache error rate is {{ $value }} errors/second"
+
+      - alert: CacheConnectionErrors
+        expr: rate(cache_errors_total{type="connection_error"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "cache"
+          team: "backend"
+        annotations:
+          summary: "Cache connection errors detected"
+          description: "Cache connection errors are occurring at {{ $value }} per second"
+
+      - alert: CacheTimeoutErrors
+        expr: rate(cache_errors_total{type="timeout"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: "cache"
+          team: "backend"
+        annotations:
+          summary: "Cache timeout errors detected"
+          description: "Cache timeout errors are occurring at {{ $value }} per second"
+
+  # Queue Error Alerts
+  - name: lexiscan.errors.queue
+    rules:
+      - alert: QueueProcessingErrors
+        expr: rate(queue_processing_errors_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: "queue"
+          team: "backend"
+        annotations:
+          summary: "Queue processing errors detected"
+          description: "Queue processing error rate is {{ $value }} errors/second"
+
+      - alert: QueueDeadLetterMessages
+        expr: rate(queue_dead_letter_messages_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "queue"
+          team: "backend"
+        annotations:
+          summary: "Dead letter queue messages detected"
+          description: "Dead letter queue messages are accumulating at {{ $value }} per second"
+
+      - alert: QueueProcessingFailures
+        expr: rate(queue_processing_failures_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          service: "queue"
+          team: "backend"
+        annotations:
+          summary: "Queue processing failures detected"
+          description: "Queue processing failure rate is {{ $value }} failures/second"
+
+  # Security Error Alerts
+  - name: lexiscan.errors.security
+    rules:
+      - alert: AuthenticationErrors
+        expr: rate(authentication_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: "auth"
+          team: "security"
+        annotations:
+          summary: "High authentication error rate"
+          description: "Authentication error rate is {{ $value }} errors/second"
+
+      - alert: AuthorizationErrors
+        expr: rate(authorization_errors_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          service: "auth"
+          team: "security"
+        annotations:
+          summary: "High authorization error rate"
+          description: "Authorization error rate is {{ $value }} errors/second"
+
+      - alert: SecurityViolations
+        expr: rate(security_violations_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "security"
+          team: "security"
+        annotations:
+          summary: "Security violations detected"
+          description: "Security violations are occurring at {{ $value }} per second"

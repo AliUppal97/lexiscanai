@@ -1,0 +1,258 @@
+# API Alerts Configuration for LexiScan AI
+#
+# Purpose:
+# - Monitors API performance and health
+# - Detects service degradation
+# - Alerts on critical API issues
+# - Ensures SLA compliance
+#
+# Alert Categories:
+# - Service Health
+# - Performance Issues
+# - Error Rates
+# - Resource Usage
+# - Security Events
+
+groups:
+  # API Service Health Alerts
+  - name: lexiscan.api.health
+    rules:
+      - alert: APIServiceDown
+        expr: up{job="lexiscan-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "LexiScan API service is down"
+          description: "The LexiScan API service has been down for more than 1 minute"
+          runbook_url: "https://docs.lexiscan.ai/runbooks/api-service-down"
+          dashboard_url: "http://grafana:3003/d/api-dashboard"
+
+      - alert: APIServiceUnhealthy
+        expr: up{job="lexiscan-api"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "LexiScan API service is unhealthy"
+          description: "The LexiScan API service is not responding properly"
+
+  # API Performance Alerts
+  - name: lexiscan.api.performance
+    rules:
+      - alert: APIHighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="lexiscan-api"}[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API response time is high"
+          description: "95th percentile API response time is {{ $value }}s, exceeding 2s threshold"
+
+      - alert: APIExtremeResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="lexiscan-api"}[5m])) > 5
+        for: 1m
+        labels:
+          severity: critical
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API response time is extremely high"
+          description: "95th percentile API response time is {{ $value }}s, exceeding 5s threshold"
+
+      - alert: APILowThroughput
+        expr: rate(http_requests_total{job="lexiscan-api"}[5m]) < 1
+        for: 5m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API throughput is low"
+          description: "API request rate is {{ $value }} requests/second, below expected threshold"
+
+  # API Error Rate Alerts
+  - name: lexiscan.api.errors
+    rules:
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{job="lexiscan-api",status=~"5.."}[5m]) / rate(http_requests_total{job="lexiscan-api"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API error rate is high"
+          description: "API 5xx error rate is {{ $value | humanizePercentage }}, exceeding 5% threshold"
+
+      - alert: APIExtremeErrorRate
+        expr: rate(http_requests_total{job="lexiscan-api",status=~"5.."}[5m]) / rate(http_requests_total{job="lexiscan-api"}[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API error rate is extremely high"
+          description: "API 5xx error rate is {{ $value | humanizePercentage }}, exceeding 10% threshold"
+
+      - alert: API4xxErrorRate
+        expr: rate(http_requests_total{job="lexiscan-api",status=~"4.."}[5m]) / rate(http_requests_total{job="lexiscan-api"}[5m]) > 0.2
+        for: 3m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API 4xx error rate is high"
+          description: "API 4xx error rate is {{ $value | humanizePercentage }}, indicating potential client issues"
+
+  # API Resource Usage Alerts
+  - name: lexiscan.api.resources
+    rules:
+      - alert: APIHighMemoryUsage
+        expr: nodejs_heap_size_used_bytes{job="lexiscan-api"} / nodejs_heap_size_total_bytes{job="lexiscan-api"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API memory usage is high"
+          description: "API heap usage is {{ $value | humanizePercentage }}, exceeding 90% threshold"
+
+      - alert: APIHighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="lexiscan-api"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API CPU usage is high"
+          description: "API CPU usage is {{ $value | humanizePercentage }}, exceeding 80% threshold"
+
+      - alert: APIConnectionPoolExhausted
+        expr: database_connections_active{job="lexiscan-api"} / database_connections_total{job="lexiscan-api"} > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API database connection pool is nearly exhausted"
+          description: "Database connection pool usage is {{ $value | humanizePercentage }}, exceeding 90% threshold"
+
+  # API Security Alerts
+  - name: lexiscan.api.security
+    rules:
+      - alert: APIHighFailedAuthAttempts
+        expr: rate(http_requests_total{job="lexiscan-api",status="401"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: "api"
+          team: "security"
+        annotations:
+          summary: "High number of failed authentication attempts"
+          description: "API is receiving {{ $value }} failed auth attempts per second"
+
+      - alert: APISuspiciousActivity
+        expr: rate(http_requests_total{job="lexiscan-api",status="403"}[5m]) > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: "api"
+          team: "security"
+        annotations:
+          summary: "Suspicious API activity detected"
+          description: "API is receiving {{ $value }} 403 responses per second"
+
+      - alert: APIRateLimitExceeded
+        expr: rate(http_requests_total{job="lexiscan-api",status="429"}[5m]) > 1
+        for: 1m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API rate limit is being exceeded"
+          description: "API is receiving {{ $value }} rate limit responses per second"
+
+  # API Business Logic Alerts
+  - name: lexiscan.api.business
+    rules:
+      - alert: APIDocumentProcessingSlow
+        expr: histogram_quantile(0.95, rate(document_processing_duration_seconds_bucket{job="lexiscan-api"}[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "Document processing is slow"
+          description: "95th percentile document processing time is {{ $value }}s, exceeding 30s threshold"
+
+      - alert: APIDocumentProcessingFailed
+        expr: rate(documents_processed_total{job="lexiscan-api",status="failed"}[5m]) / rate(documents_processed_total{job="lexiscan-api"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: critical
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "Document processing failure rate is high"
+          description: "Document processing failure rate is {{ $value | humanizePercentage }}, exceeding 10% threshold"
+
+      - alert: APIQueueBacklog
+        expr: queue_length{job="lexiscan-api"} > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "API queue backlog is high"
+          description: "Processing queue has {{ $value }} items, exceeding 100 threshold"
+
+  # API Dependency Alerts
+  - name: lexiscan.api.dependencies
+    rules:
+      - alert: APIDatabaseSlow
+        expr: histogram_quantile(0.95, rate(database_query_duration_seconds_bucket{job="lexiscan-api"}[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "Database queries are slow"
+          description: "95th percentile database query time is {{ $value }}s, exceeding 1s threshold"
+
+      - alert: APICacheMissRate
+        expr: rate(redis_commands_total{job="lexiscan-api",command="get"}[5m]) / rate(redis_commands_total{job="lexiscan-api",command="get"}[5m]) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Redis cache hit rate is {{ $value | humanizePercentage }}, below 80% threshold"
+
+      - alert: APIExternalServiceSlow
+        expr: histogram_quantile(0.95, rate(external_api_duration_seconds_bucket{job="lexiscan-api"}[5m])) > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: "api"
+          team: "backend"
+        annotations:
+          summary: "External service calls are slow"
+          description: "95th percentile external API call time is {{ $value }}s, exceeding 5s threshold"

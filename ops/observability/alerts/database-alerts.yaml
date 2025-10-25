@@ -1,0 +1,272 @@
+# Database Alerts Configuration for LexiScan AI
+#
+# Purpose:
+# - Monitors database performance and health
+# - Detects database issues and bottlenecks
+# - Alerts on critical database problems
+# - Ensures data integrity and availability
+#
+# Alert Categories:
+# - Database Health
+# - Performance Issues
+# - Connection Problems
+# - Query Performance
+# - Storage Issues
+
+groups:
+  # Database Health Alerts
+  - name: lexiscan.database.health
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "The PostgreSQL database has been down for more than 1 minute"
+          runbook_url: "https://docs.lexiscan.ai/runbooks/database-down"
+          dashboard_url: "http://grafana:3003/d/database-dashboard"
+
+      - alert: DatabaseUnhealthy
+        expr: up{job="postgres"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "PostgreSQL database is unhealthy"
+          description: "The PostgreSQL database is not responding properly"
+
+      - alert: DatabaseConnectionRefused
+        expr: rate(pg_stat_database_connections_total{state="active"}[5m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database connection refused"
+          description: "No active database connections detected for 2 minutes"
+
+  # Database Performance Alerts
+  - name: lexiscan.database.performance
+    rules:
+      - alert: DatabaseSlowQueries
+        expr: histogram_quantile(0.95, rate(pg_stat_statements_mean_exec_time[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database queries are slow"
+          description: "95th percentile query execution time is {{ $value }}s, exceeding 1s threshold"
+
+      - alert: DatabaseExtremeSlowQueries
+        expr: histogram_quantile(0.95, rate(pg_stat_statements_mean_exec_time[5m])) > 5
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database queries are extremely slow"
+          description: "95th percentile query execution time is {{ $value }}s, exceeding 5s threshold"
+
+      - alert: DatabaseHighCPUUsage
+        expr: rate(pg_stat_database_cpu_time[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database CPU usage is high"
+          description: "Database CPU usage is {{ $value | humanizePercentage }}, exceeding 80% threshold"
+
+      - alert: DatabaseHighIOUsage
+        expr: rate(pg_stat_database_blks_read[5m]) + rate(pg_stat_database_blks_written[5m]) > 1000
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database I/O usage is high"
+          description: "Database I/O operations are {{ $value }} blocks/second, exceeding 1000 threshold"
+
+  # Database Connection Alerts
+  - name: lexiscan.database.connections
+    rules:
+      - alert: DatabaseHighConnectionUsage
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database connection usage is high"
+          description: "Database connection usage is {{ $value }}%, exceeding 80% threshold"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 95
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database connection pool is nearly exhausted"
+          description: "Database connection usage is {{ $value }}%, exceeding 95% threshold"
+
+      - alert: DatabaseConnectionTimeout
+        expr: rate(pg_stat_database_connections_total{state="idle"}[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database connection timeouts are high"
+          description: "Database connection timeouts are {{ $value }} per second"
+
+  # Database Storage Alerts
+  - name: lexiscan.database.storage
+    rules:
+      - alert: DatabaseDiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql"} / node_filesystem_size_bytes{mountpoint="/var/lib/postgresql"}) * 100 < 20
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database disk space is low"
+          description: "Database disk space is {{ $value }}% available, below 20% threshold"
+
+      - alert: DatabaseDiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql"} / node_filesystem_size_bytes{mountpoint="/var/lib/postgresql"}) * 100 < 10
+        for: 30s
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database disk space is critical"
+          description: "Database disk space is {{ $value }}% available, below 10% threshold"
+
+      - alert: DatabaseWALSizeHigh
+        expr: pg_wal_size_bytes / 1024 / 1024 / 1024 > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database WAL size is high"
+          description: "Database WAL size is {{ $value }}GB, exceeding 10GB threshold"
+
+  # Database Replication Alerts
+  - name: lexiscan.database.replication
+    rules:
+      - alert: DatabaseReplicationLag
+        expr: pg_stat_replication_lag > 60
+        for: 2m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database replication lag is high"
+          description: "Database replication lag is {{ $value }}s, exceeding 60s threshold"
+
+      - alert: DatabaseReplicationDown
+        expr: pg_stat_replication_lag == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database replication is down"
+          description: "Database replication is not working"
+
+  # Database Lock Alerts
+  - name: lexiscan.database.locks
+    rules:
+      - alert: DatabaseHighLockCount
+        expr: pg_stat_database_locks_total > 100
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database lock count is high"
+          description: "Database has {{ $value }} active locks, exceeding 100 threshold"
+
+      - alert: DatabaseDeadlockDetected
+        expr: rate(pg_stat_database_deadlocks_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database deadlocks detected"
+          description: "Database deadlocks are occurring at {{ $value }} per second"
+
+  # Database Transaction Alerts
+  - name: lexiscan.database.transactions
+    rules:
+      - alert: DatabaseLongRunningTransactions
+        expr: pg_stat_database_xact_commit + pg_stat_database_xact_rollback > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database has long-running transactions"
+          description: "Database has {{ $value }} long-running transactions"
+
+      - alert: DatabaseHighRollbackRate
+        expr: rate(pg_stat_database_xact_rollback[5m]) / rate(pg_stat_database_xact_commit[5m] + pg_stat_database_xact_rollback[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database rollback rate is high"
+          description: "Database rollback rate is {{ $value | humanizePercentage }}, exceeding 10% threshold"
+
+  # Database Cache Alerts
+  - name: lexiscan.database.cache
+    rules:
+      - alert: DatabaseLowCacheHitRate
+        expr: pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read) * 100 < 90
+        for: 5m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database cache hit rate is low"
+          description: "Database cache hit rate is {{ $value }}%, below 90% threshold"
+
+      - alert: DatabaseCacheSizeLow
+        expr: pg_stat_database_shared_buffers_bytes / 1024 / 1024 / 1024 < 1
+        for: 3m
+        labels:
+          severity: warning
+          service: "database"
+          team: "backend"
+        annotations:
+          summary: "Database cache size is low"
+          description: "Database shared buffers are {{ $value }}GB, below 1GB threshold"

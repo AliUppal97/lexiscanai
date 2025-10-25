@@ -1,0 +1,333 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "LexiScan AI - Business Metrics Dashboard",
+    "description": "Business intelligence and key performance indicators for LexiScan AI platform",
+    "tags": ["lexiscan", "business", "kpi", "analytics"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "1m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Users (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_active_users_24h",
+            "legendFormat": "Active Users"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Documents Processed (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_documents_processed_24h",
+            "legendFormat": "Documents"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Revenue (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_revenue_24h",
+            "legendFormat": "Revenue"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "API Usage (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_api_calls_24h",
+            "legendFormat": "API Calls"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "User Growth Trend",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(business_new_users_total[1h])",
+            "legendFormat": "New Users/hour"
+          },
+          {
+            "expr": "rate(business_active_users_total[1h])",
+            "legendFormat": "Active Users/hour"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Users per Hour",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Document Processing Volume",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(business_documents_processed_total[1h])",
+            "legendFormat": "Documents/hour"
+          },
+          {
+            "expr": "rate(business_documents_processed_total{status=\"success\"}[1h])",
+            "legendFormat": "Successful/hour"
+          },
+          {
+            "expr": "rate(business_documents_processed_total{status=\"failed\"}[1h])",
+            "legendFormat": "Failed/hour"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Documents per Hour",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Revenue Trends",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(business_revenue_total[1h])",
+            "legendFormat": "Revenue/hour"
+          },
+          {
+            "expr": "rate(business_subscriptions_total[1h])",
+            "legendFormat": "New Subscriptions/hour"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Revenue ($)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 8}
+      },
+      {
+        "id": 8,
+        "title": "Feature Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(business_feature_usage_total{feature=\"document_upload\"}[1h])",
+            "legendFormat": "Document Upload"
+          },
+          {
+            "expr": "rate(business_feature_usage_total{feature=\"ai_analysis\"}[1h])",
+            "legendFormat": "AI Analysis"
+          },
+          {
+            "expr": "rate(business_feature_usage_total{feature=\"export\"}[1h])",
+            "legendFormat": "Export"
+          },
+          {
+            "expr": "rate(business_feature_usage_total{feature=\"collaboration\"}[1h])",
+            "legendFormat": "Collaboration"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Usage per Hour",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Customer Segments",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (customer_segment) (business_active_users_total)",
+            "legendFormat": "{{ customer_segment }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 10,
+        "title": "Geographic Distribution",
+        "type": "worldmap",
+        "targets": [
+          {
+            "expr": "sum by (country) (business_active_users_total)",
+            "legendFormat": "{{ country }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 16}
+      },
+      {
+        "id": 11,
+        "title": "Subscription Metrics",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "business_subscriptions_active",
+            "legendFormat": "Active Subscriptions"
+          },
+          {
+            "expr": "business_subscriptions_trial",
+            "legendFormat": "Trial Subscriptions"
+          },
+          {
+            "expr": "business_subscriptions_enterprise",
+            "legendFormat": "Enterprise Subscriptions"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Subscriptions",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 12,
+        "title": "Churn Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_churn_rate",
+            "legendFormat": "Churn Rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 5},
+                {"color": "red", "value": 10}
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 24}
+      },
+      {
+        "id": 13,
+        "title": "Customer Satisfaction",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "business_customer_satisfaction_score",
+            "legendFormat": "CSAT Score"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 3},
+                {"color": "green", "value": 4}
+              ]
+            },
+            "min": 0,
+            "max": 5
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 24}
+      },
+      {
+        "id": 14,
+        "title": "Top Performing Features",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, rate(business_feature_usage_total[24h]))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 24, "y": 24}
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Marketing Campaigns",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "business_marketing_campaign_start",
+          "iconColor": "green"
+        },
+        {
+          "name": "Product Releases",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "business_product_release",
+          "iconColor": "blue"
+        }
+      ]
+    }
+  }
+}
