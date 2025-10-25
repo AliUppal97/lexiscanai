@@ -1,0 +1,516 @@
+---
+# Security Scanning Pipeline
+#
+# Purpose:
+# - Comprehensive security scanning of codebase
+# - Vulnerability detection in dependencies
+# - SAST (Static Application Security Testing)
+# - DAST (Dynamic Application Security Testing)
+# - Container image scanning
+# - Secret detection
+# - License compliance
+#
+# Triggers:
+# - Schedule (daily at 2 AM UTC)
+# - Push to main/develop
+# - Pull requests
+# - Manual workflow dispatch
+#
+# Features:
+# - Multi-layer security scanning
+# - Automated vulnerability reports
+# - Security advisories
+# - Compliance checking
+
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+# Limit concurrent security scans
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Secret Scanning
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret detection
+      
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+      
+      - name: Scan for hardcoded secrets
+        run: |
+          # Check for common secret patterns
+          echo "Scanning for hardcoded secrets..."
+          grep -r -i "password.*=.*['\"]" --include=\*.{ts,tsx,js,jsx} apps/ || true
+          grep -r -i "api[_-]?key.*=.*['\"]" --include=\*.{ts,tsx,js,jsx} apps/ || true
+          grep -r -i "secret.*=.*['\"]" --include=\*.{ts,tsx,js,jsx} apps/ || true
+      
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+  # Job 2: Dependency Vulnerability Scanning
+  dependency-scan:
+    name: Dependency Vulnerability Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    strategy:
+      matrix:
+        workspace: [api, web]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          cd apps/${{ matrix.workspace }}
+          npm ci
+      
+      - name: Run npm audit
+        run: |
+          cd apps/${{ matrix.workspace }}
+          npm audit --production --json > npm-audit.json || true
+        continue-on-error: true
+      
+      - name: Run Snyk vulnerability scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: |
+            --severity-threshold=high
+            --file=apps/${{ matrix.workspace }}/package.json
+            --json-file-output=snyk-report-${{ matrix.workspace }}.json
+      
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'lexiscan-${{ matrix.workspace }}'
+          path: 'apps/${{ matrix.workspace }}'
+          format: 'ALL'
+      
+      - name: Upload dependency reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-reports-${{ matrix.workspace }}
+          path: |
+            npm-audit.json
+            snyk-report-${{ matrix.workspace }}.json
+            dependency-check-report.*
+
+  # Job 3: SAST - Static Application Security Testing
+  sast-scan:
+    name: Static Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript, typescript
+          queries: security-and-quality
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+      
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/react
+            p/typescript
+      
+      - name: Run ESLint Security Plugin
+        run: |
+          npm ci
+          npm run lint:security
+        continue-on-error: true
+      
+      - name: SonarQube Security Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=lexiscan-ai
+            -Dsonar.sources=apps/
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**
+            -Dsonar.security.hotspots=true
+      
+      - name: Upload SAST results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: sast-results
+          path: |
+            semgrep-report.json
+            eslint-security-report.json
+
+  # Job 4: Container Security Scanning
+  container-scan:
+    name: Container Image Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    strategy:
+      matrix:
+        service: [api, web, ai-worker, pdf-generator]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t lexiscan/${{ matrix.service }}:scan \
+            -f services/${{ matrix.service }}/Dockerfile \
+            .
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: lexiscan/${{ matrix.service }}:scan
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+      
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: lexiscan/${{ matrix.service }}:scan
+          fail-build: false
+          severity-cutoff: high
+      
+      - name: Run Snyk container scan
+        uses: snyk/actions/docker@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: lexiscan/${{ matrix.service }}:scan
+          args: --severity-threshold=high
+      
+      - name: Scan for malware
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image \
+            --scanners vuln,secret,config \
+            lexiscan/${{ matrix.service }}:scan
+      
+      - name: Upload container scan results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: container-scan-${{ matrix.service }}
+          path: |
+            trivy-${{ matrix.service }}.sarif
+            snyk-container-report.json
+
+  # Job 5: Infrastructure as Code Security
+  iac-scan:
+    name: IaC Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Checkov on Terraform
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra/terraform/
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-terraform.sarif
+      
+      - name: Run Checkov on Kubernetes
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra/k8s/
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-k8s.sarif
+      
+      - name: Run Checkov on Dockerfiles
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: services/
+          framework: dockerfile
+          output_format: sarif
+          output_file_path: checkov-docker.sarif
+      
+      - name: Scan Kubernetes manifests with Kubesec
+        run: |
+          docker run --rm -v $(pwd):/project \
+            kubesec/kubesec scan \
+            /project/infra/k8s/**/*.yaml > kubesec-report.json
+      
+      - name: Terraform security scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: infra/terraform/
+          format: sarif
+          output: tfsec-results.sarif
+      
+      - name: Upload IaC scan results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: iac-scan-results
+          path: |
+            checkov-*.sarif
+            kubesec-report.json
+            tfsec-results.sarif
+
+  # Job 6: API Security Testing
+  api-security:
+    name: API Security Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: lexiscan_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          npm ci
+      
+      - name: Start API server
+        run: |
+          cd apps/api
+          npm start &
+          sleep 20
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/lexiscan_test
+          NODE_ENV: test
+      
+      - name: Run OWASP ZAP API scan
+        uses: zaproxy/action-api-scan@v0.4.0
+        with:
+          target: 'http://localhost:3000'
+          format: openapi
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+      
+      - name: Run API fuzzing
+        run: |
+          npx restler-fuzzer \
+            --swagger http://localhost:3000/api-docs \
+            --duration 10m
+      
+      - name: SQL injection testing
+        run: |
+          sqlmap -u "http://localhost:3000/api/users?id=1" \
+            --batch \
+            --level=2 \
+            --risk=1
+      
+      - name: Upload API security results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: api-security-results
+          path: |
+            zap-report.html
+            restler-fuzzer-report.json
+
+  # Job 7: License Compliance
+  license-scan:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run license checker
+        run: |
+          npx license-checker \
+            --json \
+            --out licenses.json \
+            --failOn "GPL;AGPL;LGPL"
+      
+      - name: Check for incompatible licenses
+        run: |
+          npx license-compliance \
+            --production \
+            --allow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC"
+      
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: license-report
+          path: licenses.json
+
+  # Job 8: Security Summary Report
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [secret-scan, dependency-scan, sast-scan, container-scan, iac-scan, api-security, license-scan]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: security-reports/
+      
+      - name: Generate security summary
+        run: |
+          echo "### Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret Scan: ${{ needs.secret-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SAST Scan: ${{ needs.sast-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Container Scan: ${{ needs.container-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- IaC Scan: ${{ needs.iac-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- API Security: ${{ needs.api-security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- License Check: ${{ needs.license-scan.result }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check for failures
+        if: |
+          needs.secret-scan.result == 'failure' ||
+          needs.dependency-scan.result == 'failure' ||
+          needs.sast-scan.result == 'failure' ||
+          needs.container-scan.result == 'failure'
+        run: |
+          echo "⚠️ Security vulnerabilities detected!"
+          exit 1
+      
+      - name: Send Slack notification
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Security Scan ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Security Scan Results*\n\nRepository: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\nStatus: ${{ job.status }}\n\n*Results:*\n• Secret Scan: ${{ needs.secret-scan.result }}\n• Dependency Scan: ${{ needs.dependency-scan.result }}\n• SAST: ${{ needs.sast-scan.result }}\n• Container Scan: ${{ needs.container-scan.result }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: Create security issue on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🔒 Security Vulnerabilities Detected',
+              body: 'Security scan failed. Please review the security reports in the Actions tab.',
+              labels: ['security', 'urgent']
+            })
+

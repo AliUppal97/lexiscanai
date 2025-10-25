@@ -1,0 +1,400 @@
+---
+# Continuous Deployment - Staging Environment
+#
+# Purpose:
+# - Automatically deploys to staging on develop branch push
+# - Runs smoke tests after deployment
+# - Validates deployment health
+# - Notifies team of deployment status
+#
+# Triggers:
+# - Push to develop branch
+# - Manual workflow dispatch
+#
+# Features:
+# - Docker image build and push
+# - Kubernetes deployment
+# - Database migrations
+# - Smoke tests
+# - Rollback capability
+# - Deployment notifications
+
+name: CD - Deploy to Staging
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version/Tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  KUBE_NAMESPACE: lexiscan-ai-staging
+  ENVIRONMENT: staging
+
+# Ensure only one deployment at a time
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  # Job 1: Build and Push Docker Images
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    strategy:
+      matrix:
+        service: [api, web, ai-worker, pdf-generator]
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=staging-
+            type=raw,value=staging-latest
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=staging
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+      
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:staging-${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+  # Job 2: Database Migrations
+  database-migration:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-and-push]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name lexiscan-staging --region us-east-1
+      
+      - name: Create migration job
+        run: |
+          kubectl create job migration-${{ github.sha }} \
+            --from=cronjob/db-migration \
+            --namespace=${{ env.KUBE_NAMESPACE }}
+      
+      - name: Wait for migration to complete
+        run: |
+          kubectl wait --for=condition=complete \
+            job/migration-${{ github.sha }} \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
+            --timeout=300s
+      
+      - name: Check migration logs
+        if: always()
+        run: |
+          kubectl logs job/migration-${{ github.sha }} \
+            --namespace=${{ env.KUBE_NAMESPACE }}
+      
+      - name: Cleanup migration job
+        if: always()
+        run: |
+          kubectl delete job migration-${{ github.sha }} \
+            --namespace=${{ env.KUBE_NAMESPACE }}
+
+  # Job 3: Deploy to Kubernetes
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-and-push, database-migration]
+    
+    strategy:
+      matrix:
+        service: [api, web, worker, pdf-generator]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name lexiscan-staging --region us-east-1
+      
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/${{ matrix.service }}-deployment \
+            ${{ matrix.service }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:staging-${{ github.sha }} \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
+            --record
+      
+      - name: Wait for rollout to complete
+        run: |
+          kubectl rollout status deployment/${{ matrix.service }}-deployment \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
+            --timeout=300s
+      
+      - name: Verify deployment
+        run: |
+          kubectl get pods -l app=${{ matrix.service }} \
+            --namespace=${{ env.KUBE_NAMESPACE }}
+      
+      - name: Check pod health
+        run: |
+          kubectl wait --for=condition=ready \
+            pod -l app=${{ matrix.service }} \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
+            --timeout=300s
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/${{ matrix.service }}-deployment \
+            --namespace=${{ env.KUBE_NAMESPACE }}
+
+  # Job 4: Update ConfigMaps and Secrets
+  update-config:
+    name: Update Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy-kubernetes]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name lexiscan-staging --region us-east-1
+      
+      - name: Update ConfigMap
+        run: |
+          kubectl create configmap lexiscan-ai-config \
+            --from-env-file=./config/staging.env \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Restart deployments to pick up config
+        run: |
+          kubectl rollout restart deployment/api-deployment --namespace=${{ env.KUBE_NAMESPACE }}
+          kubectl rollout restart deployment/web-deployment --namespace=${{ env.KUBE_NAMESPACE }}
+
+  # Job 5: Smoke Tests
+  smoke-tests:
+    name: Run Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-kubernetes, update-config]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Wait for services to be ready
+        run: sleep 30
+      
+      - name: Test API health endpoint
+        run: |
+          curl -f https://api-staging.lexiscan.ai/health || exit 1
+      
+      - name: Test Web health endpoint
+        run: |
+          curl -f https://staging.lexiscan.ai/health || exit 1
+      
+      - name: Run smoke tests
+        run: npm run test:smoke
+        env:
+          API_URL: https://api-staging.lexiscan.ai
+          WEB_URL: https://staging.lexiscan.ai
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: smoke-test-results
+          path: test-results/smoke/
+
+  # Job 6: Performance Baseline
+  performance-check:
+    name: Performance Baseline Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [smoke-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            https://staging.lexiscan.ai
+            https://staging.lexiscan.ai/login
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+      
+      - name: Run load test
+        run: |
+          npx artillery quick \
+            --count 50 \
+            --num 10 \
+            https://api-staging.lexiscan.ai/health
+      
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: |
+            .lighthouseci/
+            artillery-report.json
+
+  # Job 7: Deployment Summary
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-kubernetes, smoke-tests, performance-check]
+    if: always()
+    
+    steps:
+      - name: Generate deployment summary
+        run: |
+          echo "### Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URLs:**" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://api-staging.lexiscan.ai" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: https://staging.lexiscan.ai" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Services Deployed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- API: ${{ needs.deploy-kubernetes.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: ${{ needs.deploy-kubernetes.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Worker: ${{ needs.deploy-kubernetes.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PDF Generator: ${{ needs.deploy-kubernetes.result }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Staging Deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Deployment ${{ job.status }}*\n\n*Environment:* Staging\n*Commit:* ${{ github.sha }}\n*Branch:* ${{ github.ref_name }}\n*Triggered by:* ${{ github.actor }}\n\n*URLs:*\n• API: https://api-staging.lexiscan.ai\n• Web: https://staging.lexiscan.ai"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: staging
+          environment-url: https://staging.lexiscan.ai
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Deployed to staging!\n\n**URLs:**\n- API: https://api-staging.lexiscan.ai\n- Web: https://staging.lexiscan.ai\n\n**Commit:** ${{ github.sha }}'
+            })
+
