@@ -174,6 +174,17 @@ export type {
   PageViewEvent,
 } from "./useAnalytics"
 
+/**
+ * Notification Management
+ * - Real-time notifications via WebSocket
+ * - Mark as read/unread functionality
+ * - Bulk operations (mark all read, clear all)
+ * - Notification filtering and pagination
+ * - Auto-refresh and polling fallback
+ */
+export { useNotifications } from "./useNotifications"
+export type { UseNotificationsOptions, UseNotificationsReturn } from "./useNotifications"
+
 // ============================================================================
 // USAGE EXAMPLES
 // ============================================================================

@@ -50,20 +50,26 @@ export interface Notification {
 export interface NotificationCenterProps {
   notifications: Notification[]
   unreadCount?: number
+  isLoading?: boolean
+  error?: string | null
   onNotificationClick?: (notification: Notification) => void
   onMarkAsRead?: (id: string) => void
   onMarkAllAsRead?: () => void
   onClearAll?: () => void
+  onRetry?: () => void
   maxHeight?: string
 }
 
 export function NotificationCenter({
   notifications,
   unreadCount,
+  isLoading = false,
+  error = null,
   onNotificationClick,
   onMarkAsRead,
   onMarkAllAsRead,
   onClearAll,
+  onRetry,
   maxHeight = "400px",
 }: NotificationCenterProps) {
   const [open, setOpen] = React.useState(false)
@@ -120,7 +126,23 @@ export function NotificationCenter({
           
           <TabsContent value={activeTab} className="mt-0">
             <div style={{ maxHeight }} className="overflow-y-auto">
-              {displayNotifications.length === 0 ? (
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                  <p className="text-sm text-muted-foreground">Loading notifications...</p>
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Bell className="h-12 w-12 text-red-500 mb-4" />
+                  <p className="text-sm text-red-600 mb-2">Failed to load notifications</p>
+                  <p className="text-xs text-muted-foreground mb-4">{error}</p>
+                  {onRetry && (
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                      Try Again
+                    </Button>
+                  )}
+                </div>
+              ) : displayNotifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Bell className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-sm text-muted-foreground">

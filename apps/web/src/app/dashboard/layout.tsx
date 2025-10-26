@@ -4,12 +4,13 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Logo } from "@/components/ui/logo"
+import { NotificationCenter } from "@/components/dashboard/NotificationCenter"
+import { useNotifications } from "@/hooks/useNotifications"
 import { 
   FileText,
   BarChart3, 
   Users, 
   Settings, 
-  Bell, 
   Search,
   Menu,
   X,
@@ -17,19 +18,14 @@ import {
   User,
   CreditCard,
   HelpCircle,
-  Shield,
-  Zap,
   Brain,
   Upload,
   History,
-  Star,
   ChevronDown
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,7 +99,23 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const pathname = usePathname()
+  
+  // Initialize notifications hook
+  const {
+    notifications,
+    unreadCount,
+    isLoading: notificationsLoading,
+    error: notificationsError,
+    markAsRead,
+    markAllAsRead,
+    clearAll,
+    refresh: refreshNotifications,
+    onNotificationClick
+  } = useNotifications({
+    enableRealtime: true,
+    refreshInterval: 30000,
+    limit: 50
+  })
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -171,13 +183,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Right side actions - Fixed width */}
             <div className="flex items-center gap-x-2 flex-shrink-0">
               {/* Notifications */}
-              <Button variant="ghost" size="sm" className="relative">
-                <span className="sr-only">View notifications</span>
-                <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 border-2 border-white">
-                  3
-                </Badge>
-              </Button>
+              <NotificationCenter
+                notifications={notifications}
+                unreadCount={unreadCount}
+                isLoading={notificationsLoading}
+                error={notificationsError}
+                onNotificationClick={onNotificationClick}
+                onMarkAsRead={markAsRead}
+                onMarkAllAsRead={markAllAsRead}
+                onClearAll={clearAll}
+                onRetry={refreshNotifications}
+                maxHeight="400px"
+              />
 
               {/* Profile dropdown */}
               <DropdownMenu>
