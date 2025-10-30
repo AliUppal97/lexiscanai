@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import type { JsonValue } from "@lexiscan/shared-types"
 
 /**
  * useDebounce - Debounce any fast-changing value
@@ -50,10 +51,10 @@ export function useDebounce<T>(value: T, delay: number = 500): T {
  *   1000
  * )
  */
-export function useDebouncedCallback<T extends (...args: unknown[]) => unknown>(
-  callback: T,
+export function useDebouncedCallback<T extends JsonValue>(
+  callback: (value: T) => void,
   delay: number = 500
-): (...args: Parameters<T>) => void {
+): (value: T) => void {
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -65,13 +66,13 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => unknown>(
     }
   }, [timeoutId])
 
-  return (...args: Parameters<T>) => {
+  return (value: T) => {
     if (timeoutId) {
       clearTimeout(timeoutId)
     }
 
     const newTimeoutId = setTimeout(() => {
-      callback(...args)
+      callback(value)
     }, delay)
 
     setTimeoutId(newTimeoutId)

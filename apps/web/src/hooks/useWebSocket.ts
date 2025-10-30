@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useAuth } from "./useAuth"
+import type { JsonValue } from "@lexiscan/shared-types"
 
 export type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error"
 
-export interface WebSocketMessage<T = unknown> {
+export interface WebSocketMessage<T = JsonValue> {
   type: string
   data: T
   timestamp: string
@@ -28,8 +29,8 @@ interface UseWebSocketReturn {
   status: WebSocketStatus
   isConnected: boolean
   lastMessage: WebSocketMessage | null
-  send: (type: string, data: unknown) => void
-  subscribe: (type: string, callback: (data: unknown) => void) => () => void
+  send: (type: string, data: JsonValue) => void
+  subscribe: <T extends JsonValue = JsonValue>(type: string, callback: (data: T) => void) => () => void
   connect: () => void
   disconnect: () => void
 }
@@ -88,13 +89,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectCount = useRef(0)
   const heartbeatTimer = useRef<NodeJS.Timeout | null>(null)
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null)
-  const subscribers = useRef<Map<string, Set<(data: unknown) => void>>>(new Map())
+  const subscribers = useRef<Map<string, Set<(data: JsonValue) => void>>>(new Map())
 
   const [status, setStatus] = useState<WebSocketStatus>("disconnected")
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
 
   // Send message
-  const send = useCallback((type: string, data: unknown) => {
+  const send = useCallback((type: string, data: JsonValue) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       const message: WebSocketMessage = {
         type,
@@ -248,17 +249,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
   // Subscribe to message type
   const subscribe = useCallback(
-    (type: string, callback: (data: unknown) => void): (() => void) => {
+    <T extends JsonValue = JsonValue>(type: string, callback: (data: T) => void): (() => void) => {
       if (!subscribers.current.has(type)) {
         subscribers.current.set(type, new Set())
       }
 
       const typeSubscribers = subscribers.current.get(type)!
-      typeSubscribers.add(callback)
+      typeSubscribers.add(callback as unknown as (data: JsonValue) => void)
 
       // Return unsubscribe function
       return () => {
-        typeSubscribers.delete(callback)
+        typeSubscribers.delete(callback as unknown as (data: JsonValue) => void)
         if (typeSubscribers.size === 0) {
           subscribers.current.delete(type)
         }
@@ -304,9 +305,15 @@ export function useDocumentUpdates() {
   const { subscribe } = useWebSocket({ autoConnect: true })
   const [processingDocuments, setProcessingDocuments] = useState<Set<string>>(new Set())
 
+  interface DocumentEvent {
+    documentId: string
+    documentTitle?: string
+    error?: string
+  }
+
   const onDocumentProcessed = useCallback(
-    (callback: (document: unknown) => void) => {
-      return subscribe("document.processed", (data) => {
+    (callback: (document: DocumentEvent) => void) => {
+      return subscribe<DocumentEvent>("document.processed", (data) => {
         setProcessingDocuments((prev) => {
           const newSet = new Set(prev)
           newSet.delete(data.documentId)
@@ -319,8 +326,8 @@ export function useDocumentUpdates() {
   )
 
   const onDocumentFailed = useCallback(
-    (callback: (error: unknown) => void) => {
-      return subscribe("document.failed", (data) => {
+    (callback: (error: DocumentEvent) => void) => {
+      return subscribe<DocumentEvent>("document.failed", (data) => {
         setProcessingDocuments((prev) => {
           const newSet = new Set(prev)
           newSet.delete(data.documentId)
@@ -333,8 +340,8 @@ export function useDocumentUpdates() {
   )
 
   const onProcessingStarted = useCallback(
-    (callback: (document: unknown) => void) => {
-      return subscribe("document.processing", (data) => {
+    (callback: (document: DocumentEvent) => void) => {
+      return subscribe<DocumentEvent>("document.processing", (data) => {
         setProcessingDocuments((prev) => new Set(prev).add(data.documentId))
         callback(data)
       })

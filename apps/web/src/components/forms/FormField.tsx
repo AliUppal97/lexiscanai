@@ -98,7 +98,7 @@ export interface EnhancedFormFieldProps<
   readOnly?: boolean
   
   // Validation
-  validate?: (value: unknown) => boolean | string | Promise<boolean | string>
+  validate?: (value: string | number | boolean | null | undefined) => boolean | string | Promise<boolean | string>
   
   // Select options
   options?: SelectOption[]
@@ -122,7 +122,7 @@ export interface EnhancedFormFieldProps<
   checkboxLabel?: string
   
   // Callbacks
-  onChange?: (value: unknown) => void
+  onChange?: (value: string | number | boolean | null | undefined) => void
   onBlur?: (e: React.FocusEvent) => void
   onFocus?: (e: React.FocusEvent) => void
 }
@@ -214,8 +214,8 @@ export function EnhancedFormField<
 interface RenderFieldProps {
   field: {
     name: string
-    value: unknown
-    onChange: (value: unknown) => void
+    value: string | number | boolean | null | undefined
+    onChange: (value: string | number | boolean | null | undefined) => void
     onBlur: () => void
   }
   type: FieldType
@@ -236,7 +236,7 @@ interface RenderFieldProps {
   checkboxLabel?: string
   required?: boolean
   labelClassName?: string
-  onChange?: (value: unknown) => void
+  onChange?: (value: string | number | boolean | null | undefined) => void
   onBlur?: (e: React.FocusEvent) => void
   onFocus?: (e: React.FocusEvent) => void
 }
@@ -265,7 +265,7 @@ function renderField({
   onBlur,
   onFocus,
 }: RenderFieldProps) {
-  const handleChange = (value: unknown) => {
+  const handleChange = (value: string | number | boolean | null | undefined) => {
     field.onChange(value)
     onChange?.(value)
   }

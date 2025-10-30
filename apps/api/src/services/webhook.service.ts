@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { JsonObject } from '@lexiscan/shared-types';
 
 export interface WebhookPayload {
   event: string;
@@ -183,7 +184,7 @@ export class WebhookService {
   /**
    * Broadcast webhook to all endpoints subscribed to an event
    */
-  async broadcast(tenantId: string, event: string, data: any): Promise<WebhookAttempt[]> {
+  async broadcast(tenantId: string, event: string, data: JsonObject): Promise<WebhookAttempt[]> {
     // In production, fetch all active endpoints for this tenant and event
     // const endpoints = await this.prisma.webhookEndpoint.findMany({
     //   where: {
@@ -236,7 +237,7 @@ export class WebhookService {
   /**
    * Generate webhook signature
    */
-  generateSignature(payload: any, secret: string): string {
+  generateSignature(payload: JsonObject, secret: string): string {
     const payloadString = JSON.stringify(payload);
     return crypto.createHmac('sha256', secret).update(payloadString).digest('hex');
   }

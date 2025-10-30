@@ -166,9 +166,9 @@ export const timeSchema = z
  */
 export const fileSizeSchema = (maxSizeMB: number) =>
   z
-    .any()
+    .instanceof(File)
     .refine(
-      (file) => file instanceof File && file.size <= maxSizeMB * 1024 * 1024,
+      (file) => file.size <= maxSizeMB * 1024 * 1024,
       `File size must be less than ${maxSizeMB}MB`
     )
 
@@ -177,9 +177,9 @@ export const fileSizeSchema = (maxSizeMB: number) =>
  */
 export const fileTypeSchema = (allowedTypes: string[]) =>
   z
-    .any()
+    .instanceof(File)
     .refine(
-      (file) => file instanceof File && allowedTypes.includes(file.type),
+      (file) => allowedTypes.includes(file.type),
       `File type must be one of: ${allowedTypes.join(", ")}`
     )
 

@@ -51,7 +51,7 @@ export class CacheService implements OnModuleDestroy {
   /**
    * Set a value in cache
    */
-  async set(key: string, value: any, ttl?: number): Promise<boolean> {
+  async set(key: string, value: unknown, ttl?: number): Promise<boolean> {
     if (!this.enabled) {
       return false;
     }
@@ -74,7 +74,7 @@ export class CacheService implements OnModuleDestroy {
   /**
    * Get a value from cache
    */
-  async get<T = any>(key: string): Promise<T | null> {
+  async get<T = unknown>(key: string): Promise<T | null> {
     if (!this.enabled) {
       return null;
     }
@@ -99,7 +99,7 @@ export class CacheService implements OnModuleDestroy {
   /**
    * Get multiple values from cache
    */
-  async mget<T = any>(keys: string[]): Promise<(T | null)[]> {
+  async mget<T = unknown>(keys: string[]): Promise<(T | null)[]> {
     if (!this.enabled) {
       return keys.map(() => null);
     }
@@ -306,14 +306,14 @@ export class CacheService implements OnModuleDestroy {
    * Hash operations
    */
 
-  async hSet(key: string, field: string, value: any): Promise<number> {
+  async hSet(key: string, field: string, value: unknown): Promise<number> {
     if (!this.enabled) return 0;
     const fullKey = this.getFullKey(key);
     const serialized = JSON.stringify(value);
     return await this.client.hSet(fullKey, field, serialized);
   }
 
-  async hGet<T = any>(key: string, field: string): Promise<T | null> {
+  async hGet<T = unknown>(key: string, field: string): Promise<T | null> {
     if (!this.enabled) return null;
     const fullKey = this.getFullKey(key);
     const value = await this.client.hGet(fullKey, field);
@@ -321,11 +321,11 @@ export class CacheService implements OnModuleDestroy {
     try {
       return JSON.parse(value) as T;
     } catch {
-      return value as any;
+      return value as unknown as T;
     }
   }
 
-  async hGetAll<T = any>(key: string): Promise<Record<string, T>> {
+  async hGetAll<T = unknown>(key: string): Promise<Record<string, T>> {
     if (!this.enabled) return {};
     const fullKey = this.getFullKey(key);
     const values = await this.client.hGetAll(fullKey);
@@ -333,9 +333,9 @@ export class CacheService implements OnModuleDestroy {
 
     for (const [field, value] of Object.entries(values)) {
       try {
-        result[field] = JSON.parse(value);
+        result[field] = JSON.parse(value) as T;
       } catch {
-        result[field] = value as any;
+        result[field] = value as unknown as T;
       }
     }
 
@@ -352,29 +352,29 @@ export class CacheService implements OnModuleDestroy {
    * List operations
    */
 
-  async lPush(key: string, ...values: any[]): Promise<number> {
+  async lPush(key: string, ...values: unknown[]): Promise<number> {
     if (!this.enabled) return 0;
     const fullKey = this.getFullKey(key);
     const serialized = values.map((v) => JSON.stringify(v));
     return await this.client.lPush(fullKey, serialized);
   }
 
-  async rPush(key: string, ...values: any[]): Promise<number> {
+  async rPush(key: string, ...values: unknown[]): Promise<number> {
     if (!this.enabled) return 0;
     const fullKey = this.getFullKey(key);
     const serialized = values.map((v) => JSON.stringify(v));
     return await this.client.rPush(fullKey, serialized);
   }
 
-  async lRange<T = any>(key: string, start: number, stop: number): Promise<T[]> {
+  async lRange<T = unknown>(key: string, start: number, stop: number): Promise<T[]> {
     if (!this.enabled) return [];
     const fullKey = this.getFullKey(key);
     const values = await this.client.lRange(fullKey, start, stop);
     return values.map((v) => {
       try {
-        return JSON.parse(v);
+        return JSON.parse(v) as T;
       } catch {
-        return v as any;
+        return v as unknown as T;
       }
     });
   }

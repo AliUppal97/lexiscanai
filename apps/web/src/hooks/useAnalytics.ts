@@ -3,10 +3,11 @@
 import { useEffect, useCallback, useRef } from "react"
 import { useAuth } from "./useAuth"
 import { usePathname, useSearchParams } from "next/navigation"
+import type { JsonObject, JsonValue } from "@lexiscan/shared-types"
 
 export interface AnalyticsEvent {
   name: string
-  properties?: Record<string, unknown>
+  properties?: JsonObject
   timestamp?: string
   userId?: string
   sessionId?: string
@@ -28,17 +29,17 @@ interface UseAnalyticsOptions {
 
 interface UseAnalyticsReturn {
   // Event tracking
-  track: (eventName: string, properties?: Record<string, unknown>) => void
-  trackPageView: (path?: string, properties?: Record<string, unknown>) => void
-  trackClick: (element: string, properties?: Record<string, unknown>) => void
-  identify: (userId: string, traits?: Record<string, unknown>) => void
+  track: (eventName: string, properties?: JsonObject) => void
+  trackPageView: (path?: string, properties?: JsonObject) => void
+  trackClick: (element: string, properties?: JsonObject) => void
+  identify: (userId: string, traits?: JsonObject) => void
   // Performance tracking
-  trackPerformance: (metric: string, value: number, properties?: Record<string, unknown>) => void
-  trackError: (error: Error, properties?: Record<string, unknown>) => void
+  trackPerformance: (metric: string, value: number, properties?: JsonObject) => void
+  trackError: (error: Error, properties?: JsonObject) => void
   // Conversion tracking
-  trackConversion: (event: string, revenue?: number, properties?: Record<string, unknown>) => void
+  trackConversion: (event: string, revenue?: number, properties?: JsonObject) => void
   // User properties
-  setUserProperties: (properties: Record<string, unknown>) => void
+  setUserProperties: (properties: JsonObject) => void
 }
 
 const ANALYTICS_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
@@ -105,7 +106,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Log in debug mode
   const debugLog = useCallback(
-    (...args: unknown[]) => {
+    (...args: ReadonlyArray<JsonValue>) => {
       if (debug) {
         console.log("[Analytics]", ...args)
       }
@@ -136,13 +137,22 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
         })
 
         // Send to Google Analytics 4 if available
-        if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
-          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", event.name, event.properties)
+        interface AnalyticsWindow {
+          gtag?: {
+            (command: "event", eventName: string, params?: JsonObject): void
+            (command: "set", params: JsonObject): void
+          }
+          posthog?: {
+            capture: (name: string, properties?: JsonObject) => void
+          }
+        }
+        if (typeof window !== "undefined" && (window as AnalyticsWindow).gtag) {
+          (window as AnalyticsWindow).gtag!("event", event.name, event.properties)
         }
 
         // Send to PostHog if available
-        if (typeof window !== "undefined" && (window as unknown as { posthog?: { capture: (name: string, properties?: unknown) => void } }).posthog) {
-          (window as unknown as { posthog: { capture: (name: string, properties?: unknown) => void } }).posthog.capture(event.name, event.properties)
+        if (typeof window !== "undefined" && (window as AnalyticsWindow).posthog) {
+          (window as AnalyticsWindow).posthog!.capture(event.name, event.properties)
         }
       } catch (error) {
         console.error("Failed to send analytics event:", error)
@@ -153,7 +163,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track custom event
   const track = useCallback(
-    (eventName: string, properties?: Record<string, unknown>) => {
+    (eventName: string, properties?: JsonObject) => {
       sendEvent({
         name: eventName,
         properties,
@@ -164,7 +174,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track page view
   const trackPageView = useCallback(
-    (path?: string, properties?: Record<string, unknown>) => {
+    (path?: string, properties?: JsonObject) => {
       const pagePath = path || pathname
       const pageSearch = searchParams?.toString()
 
@@ -192,7 +202,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track click event
   const trackClick = useCallback(
-    (element: string, properties?: Record<string, unknown>) => {
+    (element: string, properties?: JsonObject) => {
       sendEvent({
         name: "Click",
         properties: {
@@ -207,16 +217,20 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Identify user
   const identify = useCallback(
-    (userId: string, traits?: Record<string, unknown>) => {
+    (userId: string, traits?: JsonObject) => {
       if (typeof window !== "undefined") {
-        // Google Analytics
-        if ((window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
-          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("set", { user_id: userId })
+        interface AnalyticsWindow {
+          gtag?: {
+            (command: "set", params: JsonObject): void
+          }
+          posthog?: { identify: (userId: string, traits?: JsonObject) => void }
+        }
+        if ((window as AnalyticsWindow).gtag) {
+          (window as AnalyticsWindow).gtag!("set", { user_id: userId })
         }
 
-        // PostHog
-        if ((window as unknown as { posthog?: { identify: (userId: string, traits?: unknown) => void } }).posthog) {
-          (window as unknown as { posthog: { identify: (userId: string, traits?: unknown) => void } }).posthog.identify(userId, traits)
+        if ((window as AnalyticsWindow).posthog) {
+          (window as AnalyticsWindow).posthog!.identify(userId, traits)
         }
       }
 
@@ -233,7 +247,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track performance metric
   const trackPerformance = useCallback(
-    (metric: string, value: number, properties?: Record<string, unknown>) => {
+    (metric: string, value: number, properties?: JsonObject) => {
       sendEvent({
         name: "Performance",
         properties: {
@@ -244,8 +258,9 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       })
 
       // Send to Google Analytics as custom metric
-      if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
-        (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", "timing_complete", {
+      interface AnalyticsWindow { gtag?: (command: "event", eventName: string, params?: JsonObject) => void }
+      if (typeof window !== "undefined" && (window as AnalyticsWindow).gtag) {
+        (window as AnalyticsWindow).gtag!("event", "timing_complete", {
           name: metric,
           value: Math.round(value),
           event_category: "Performance",
@@ -257,7 +272,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track error
   const trackError = useCallback(
-    (error: Error, properties?: Record<string, unknown>) => {
+    (error: Error, properties?: JsonObject) => {
       sendEvent({
         name: "Error",
         properties: {
@@ -270,9 +285,9 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
       // Send to error tracking services
       if (typeof window !== "undefined") {
-        // Sentry
-        if ((window as unknown as { Sentry?: { captureException: (error: Error) => void } }).Sentry) {
-          (window as unknown as { Sentry: { captureException: (error: Error) => void } }).Sentry.captureException(error)
+        interface AnalyticsWindow { Sentry?: { captureException: (error: Error) => void } }
+        if ((window as AnalyticsWindow).Sentry) {
+          (window as AnalyticsWindow).Sentry!.captureException(error)
         }
       }
     },
@@ -281,7 +296,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track conversion
   const trackConversion = useCallback(
-    (event: string, revenue?: number, properties?: Record<string, unknown>) => {
+    (event: string, revenue?: number, properties?: JsonObject) => {
       sendEvent({
         name: "Conversion",
         properties: {
@@ -293,8 +308,9 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       })
 
       // Send to Google Analytics
-      if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
-        (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", "purchase", {
+      interface AnalyticsWindow { gtag?: (command: "event", eventName: string, params?: JsonObject) => void }
+      if (typeof window !== "undefined" && (window as AnalyticsWindow).gtag) {
+        (window as AnalyticsWindow).gtag!("event", "purchase", {
           transaction_id: `txn_${Date.now()}`,
           value: revenue,
           currency: "USD",
@@ -307,16 +323,18 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Set user properties
   const setUserProperties = useCallback(
-    (properties: Record<string, unknown>) => {
+    (properties: JsonObject) => {
       if (typeof window !== "undefined") {
-        // Google Analytics
-        if ((window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
-          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("set", "user_properties", properties)
+        interface AnalyticsWindow {
+          gtag?: (command: "set", field: "user_properties", params: JsonObject) => void
+          posthog?: { setPersonProperties: (properties: JsonObject) => void }
+        }
+        if ((window as AnalyticsWindow).gtag) {
+          (window as AnalyticsWindow).gtag!("set", "user_properties", properties)
         }
 
-        // PostHog
-        if ((window as unknown as { posthog?: { setPersonProperties: (properties: unknown) => void } }).posthog) {
-          (window as unknown as { posthog: { setPersonProperties: (properties: unknown) => void } }).posthog.setPersonProperties(properties)
+        if ((window as AnalyticsWindow).posthog?.setPersonProperties) {
+          (window as AnalyticsWindow).posthog!.setPersonProperties(properties)
         }
       }
 
@@ -432,7 +450,7 @@ export function useFeatureTracking(featureName: string) {
   }, [featureName, track])
 
   const trackFeatureUsed = useCallback(
-    (action: string, properties?: Record<string, unknown>) => {
+    (action: string, properties?: JsonObject) => {
       track("Feature Used", {
         feature: featureName,
         action,

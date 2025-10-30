@@ -15,6 +15,7 @@ import { DateRangePicker } from "./DateRangePicker"
 import { FileUploadZone } from "./FileUploadZone"
 import { RichTextEditor } from "./RichTextEditor"
 import { Loader2 } from "lucide-react"
+import type { JsonObject } from "@lexiscan/shared-types"
 
 /**
  * FormBuilder - Enterprise dynamic form generation component
@@ -70,7 +71,14 @@ export type FormFieldType =
   | "section"
   | "custom"
 
-export interface FormFieldConfig<T = unknown> {
+type PrimitiveFormValue = string | number | boolean | null | undefined
+type DateRangeValue = { from?: Date; to?: Date }
+type FileListValue = File[]
+type MultiSelectValue = string[]
+type RichTextValue = string
+export type FormValue = PrimitiveFormValue | DateRangeValue | FileListValue | MultiSelectValue | RichTextValue
+
+export interface FormFieldConfig<T = FormValue> {
   // Basic config
   name: string
   label?: string
@@ -83,7 +91,7 @@ export interface FormFieldConfig<T = unknown> {
 
   // Validation
   validation?: z.ZodTypeAny
-  validate?: (value: unknown, formValues: FieldValues) => boolean | string | Promise<boolean | string>
+  validate?: (value: T, formValues: FieldValues) => boolean | string | Promise<boolean | string>
 
   // Options (for select, multiselect)
   options?: SelectOption[] | MultiSelectOption[]
@@ -120,11 +128,11 @@ export interface FormFieldConfig<T = unknown> {
   colSpan?: "full" | "half" | "third" | "quarter"
 }
 
-export interface FormFieldRenderProps<T = unknown> {
+export interface FormFieldRenderProps<T = FormValue> {
   field: FormFieldConfig<T>
   form: UseFormReturn<FieldValues>
-  value: unknown
-  onChange: (value: unknown) => void
+  value: T
+  onChange: (value: T) => void
   error?: string
 }
 
@@ -155,7 +163,7 @@ export interface FormBuilderProps<T extends FieldValues = FieldValues> {
 
   // Submit handling
   onSubmit: (data: T) => Promise<void> | void
-  onError?: (errors: Record<string, unknown>) => void
+  onError?: (error: Error) => void
   onChange?: (values: T) => void
 
   // UI customization
@@ -257,7 +265,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     try {
       await onSubmit(data)
     } catch (error) {
-      onError?.(error)
+      const normalized = error instanceof Error ? error : new Error(String(error))
+      onError?.(normalized)
     } finally {
       setIsSubmitting(false)
     }
@@ -295,8 +304,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         <div key={field.name} className={cn(getFieldGridClass(field), field.fieldClassName)}>
           {field.render({
             field,
-            form: form as unknown as UseFormReturn<FieldValues>,
-            value: form.watch(field.name as never),
+            form: form as UseFormReturn<FieldValues>,
+            value: form.watch(field.name as never) as FormValue,
             onChange: (value) => form.setValue(field.name as never, value as never),
             error: errors[field.name]?.message as string,
           })}
@@ -306,7 +315,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     // Multi-select
     if (field.type === "multiselect") {
-      const value = form.watch(field.name as never) as unknown as string[] | undefined
+      const value = form.watch(field.name as never) as MultiSelectValue | undefined
       return (
         <div key={field.name} className={cn(getFieldGridClass(field), field.fieldClassName, field.className)}>
           <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -329,7 +338,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     // Date range
     if (field.type === "daterange") {
-      const value = form.watch(field.name as never) as unknown as { from: Date | undefined; to: Date | undefined } | undefined
+      const value = form.watch(field.name as never) as DateRangeValue | undefined
       return (
         <div key={field.name} className={cn(getFieldGridClass(field), field.fieldClassName, field.className)}>
           <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -350,7 +359,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     // File upload
     if (field.type === "file") {
-      const value = form.watch(field.name as never) as unknown as File[] | undefined
+      const value = form.watch(field.name as never) as FileListValue | undefined
       return (
         <div key={field.name} className={cn(getFieldGridClass(field), field.fieldClassName, field.className)}>
           <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -374,7 +383,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     // Rich text
     if (field.type === "richtext") {
-      const value = form.watch(field.name as never) as unknown as string | undefined
+      const value = form.watch(field.name as never) as RichTextValue | undefined
       return (
         <div key={field.name} className={cn(getFieldGridClass(field), field.fieldClassName, field.className)}>
           <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -409,7 +418,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
           disabled={field.disabled || disabled}
           readOnly={field.readOnly}
           options={field.options as SelectOption[]}
-          validate={field.validate ? (value: unknown) => field.validate!(value, formValues) : undefined}
+          validate={field.validate ? (value: string | number | boolean | null | undefined) => field.validate!(value as FormValue, formValues) : undefined}
           min={field.min}
           max={field.max}
           rows={field.rows}

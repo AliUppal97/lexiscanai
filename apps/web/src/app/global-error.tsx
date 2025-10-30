@@ -27,12 +27,13 @@ export default function GlobalError({
               >
                 Try again
               </button>
-              <a
-                href="/"
+              <button
+                type="button"
+                onClick={() => (window.location.href = '/')}
                 className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
               >
                 Go home
-              </a>
+              </button>
             </div>
           </div>
         </div>
