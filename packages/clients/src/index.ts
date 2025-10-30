@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { ApiResponse, PaginatedResponse } from '@lexiscan/shared-types';
+import { ApiResponse } from '@lexiscan/shared-types';
 
 export interface ApiClientConfig {
   baseURL: string;
@@ -69,33 +69,51 @@ export class ApiClient {
   }
 
   // Generic request methods
-  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  /**
+   * Perform a GET request.
+   */
+  async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.client.get(url, config);
     return response.data;
   }
 
-  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  /**
+   * Perform a POST request.
+   */
+  async post<T = unknown, B = unknown>(url: string, data?: B, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.client.post(url, data, config);
     return response.data;
   }
 
-  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  /**
+   * Perform a PUT request.
+   */
+  async put<T = unknown, B = unknown>(url: string, data?: B, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.client.put(url, data, config);
     return response.data;
   }
 
-  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  /**
+   * Perform a PATCH request.
+   */
+  async patch<T = unknown, B = unknown>(url: string, data?: B, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.client.patch(url, data, config);
     return response.data;
   }
 
-  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  /**
+   * Perform a DELETE request.
+   */
+  async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.client.delete(url, config);
     return response.data;
   }
 
   // File upload method
-  async uploadFile<T = any>(
+  /**
+   * Upload a single file using multipart/form-data.
+   */
+  async uploadFile<T = unknown>(
     url: string,
     file: File,
     onProgress?: (progress: number) => void
