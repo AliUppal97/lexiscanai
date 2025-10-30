@@ -1,98 +1,98 @@
 // React 19 compatibility fix for ForwardRef components
-import { ForwardRefExoticComponent, RefAttributes } from 'react'
+import { ForwardRefExoticComponent, RefAttributes, ReactElement } from 'react'
 
 declare module 'react' {
   interface ForwardRefExoticComponent<P> extends ForwardRefExoticComponent<P> {
-    (props: P & RefAttributes<unknown>): React.ReactElement | null
+    (props: P & RefAttributes<Element>): ReactElement | null
   }
 }
 
 // Fix for Radix UI components with React 19
 declare module '@radix-ui/react-tabs' {
-  export const TabsList: ForwardRefExoticComponent<unknown>
-  export const TabsTrigger: ForwardRefExoticComponent<unknown>
-  export const TabsContent: ForwardRefExoticComponent<unknown>
+  export const TabsList: ForwardRefExoticComponent<Record<string, never>>
+  export const TabsTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const TabsContent: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-dialog' {
-  export const Dialog: ForwardRefExoticComponent<unknown>
-  export const DialogContent: ForwardRefExoticComponent<unknown>
-  export const DialogHeader: ForwardRefExoticComponent<unknown>
-  export const DialogFooter: ForwardRefExoticComponent<unknown>
-  export const DialogTitle: ForwardRefExoticComponent<unknown>
-  export const DialogDescription: ForwardRefExoticComponent<unknown>
+  export const Dialog: ForwardRefExoticComponent<Record<string, never>>
+  export const DialogContent: ForwardRefExoticComponent<Record<string, never>>
+  export const DialogHeader: ForwardRefExoticComponent<Record<string, never>>
+  export const DialogFooter: ForwardRefExoticComponent<Record<string, never>>
+  export const DialogTitle: ForwardRefExoticComponent<Record<string, never>>
+  export const DialogDescription: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-select' {
-  export const Select: ForwardRefExoticComponent<unknown>
-  export const SelectContent: ForwardRefExoticComponent<unknown>
-  export const SelectItem: ForwardRefExoticComponent<unknown>
-  export const SelectTrigger: ForwardRefExoticComponent<unknown>
-  export const SelectValue: ForwardRefExoticComponent<unknown>
+  export const Select: ForwardRefExoticComponent<Record<string, never>>
+  export const SelectContent: ForwardRefExoticComponent<Record<string, never>>
+  export const SelectItem: ForwardRefExoticComponent<Record<string, never>>
+  export const SelectTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const SelectValue: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-progress' {
-  export const Progress: ForwardRefExoticComponent<unknown>
+  export const Progress: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-avatar' {
-  export const Avatar: ForwardRefExoticComponent<unknown>
-  export const AvatarImage: ForwardRefExoticComponent<unknown>
-  export const AvatarFallback: ForwardRefExoticComponent<unknown>
+  export const Avatar: ForwardRefExoticComponent<Record<string, never>>
+  export const AvatarImage: ForwardRefExoticComponent<Record<string, never>>
+  export const AvatarFallback: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-dropdown-menu' {
-  export const DropdownMenu: ForwardRefExoticComponent<unknown>
-  export const DropdownMenuTrigger: ForwardRefExoticComponent<unknown>
-  export const DropdownMenuContent: ForwardRefExoticComponent<unknown>
-  export const DropdownMenuItem: ForwardRefExoticComponent<unknown>
+  export const DropdownMenu: ForwardRefExoticComponent<Record<string, never>>
+  export const DropdownMenuTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const DropdownMenuContent: ForwardRefExoticComponent<Record<string, never>>
+  export const DropdownMenuItem: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-checkbox' {
-  export const Checkbox: ForwardRefExoticComponent<unknown>
+  export const Checkbox: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-switch' {
-  export const Switch: ForwardRefExoticComponent<unknown>
+  export const Switch: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-accordion' {
-  export const Accordion: ForwardRefExoticComponent<unknown>
-  export const AccordionItem: ForwardRefExoticComponent<unknown>
-  export const AccordionTrigger: ForwardRefExoticComponent<unknown>
-  export const AccordionContent: ForwardRefExoticComponent<unknown>
+  export const Accordion: ForwardRefExoticComponent<Record<string, never>>
+  export const AccordionItem: ForwardRefExoticComponent<Record<string, never>>
+  export const AccordionTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const AccordionContent: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-popover' {
-  export const Popover: ForwardRefExoticComponent<unknown>
-  export const PopoverTrigger: ForwardRefExoticComponent<unknown>
-  export const PopoverContent: ForwardRefExoticComponent<unknown>
+  export const Popover: ForwardRefExoticComponent<Record<string, never>>
+  export const PopoverTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const PopoverContent: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-tooltip' {
-  export const Tooltip: ForwardRefExoticComponent<unknown>
-  export const TooltipTrigger: ForwardRefExoticComponent<unknown>
-  export const TooltipContent: ForwardRefExoticComponent<unknown>
+  export const Tooltip: ForwardRefExoticComponent<Record<string, never>>
+  export const TooltipTrigger: ForwardRefExoticComponent<Record<string, never>>
+  export const TooltipContent: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-toast' {
-  export const Toast: ForwardRefExoticComponent<unknown>
-  export const ToastProvider: ForwardRefExoticComponent<unknown>
-  export const ToastViewport: ForwardRefExoticComponent<unknown>
-  export const ToastTitle: ForwardRefExoticComponent<unknown>
-  export const ToastDescription: ForwardRefExoticComponent<unknown>
-  export const ToastAction: ForwardRefExoticComponent<unknown>
+  export const Toast: ForwardRefExoticComponent<Record<string, never>>
+  export const ToastProvider: ForwardRefExoticComponent<Record<string, never>>
+  export const ToastViewport: ForwardRefExoticComponent<Record<string, never>>
+  export const ToastTitle: ForwardRefExoticComponent<Record<string, never>>
+  export const ToastDescription: ForwardRefExoticComponent<Record<string, never>>
+  export const ToastAction: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-command' {
-  export const Command: ForwardRefExoticComponent<unknown>
-  export const CommandInput: ForwardRefExoticComponent<unknown>
-  export const CommandList: ForwardRefExoticComponent<unknown>
-  export const CommandEmpty: ForwardRefExoticComponent<unknown>
-  export const CommandGroup: ForwardRefExoticComponent<unknown>
-  export const CommandItem: ForwardRefExoticComponent<unknown>
+  export const Command: ForwardRefExoticComponent<Record<string, never>>
+  export const CommandInput: ForwardRefExoticComponent<Record<string, never>>
+  export const CommandList: ForwardRefExoticComponent<Record<string, never>>
+  export const CommandEmpty: ForwardRefExoticComponent<Record<string, never>>
+  export const CommandGroup: ForwardRefExoticComponent<Record<string, never>>
+  export const CommandItem: ForwardRefExoticComponent<Record<string, never>>
 }
 
 declare module '@radix-ui/react-slot' {
-  export const Slot: ForwardRefExoticComponent<unknown>
+  export const Slot: ForwardRefExoticComponent<Record<string, never>>
 }

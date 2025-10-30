@@ -6,6 +6,7 @@
  */
 
 import type { Notification } from "@/components/dashboard/NotificationCenter"
+import type { JsonObject } from "@lexiscan/shared-types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
 
@@ -20,7 +21,7 @@ export interface CreateNotificationRequest {
   message: string
   type: Notification['type']
   targetUserId?: string
-  data?: Record<string, unknown>
+  data?: JsonObject
   channels?: string[]
 }
 
