@@ -5,7 +5,7 @@ import { useAuth } from "./useAuth"
 
 export type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error"
 
-export interface WebSocketMessage<T = any> {
+export interface WebSocketMessage<T = unknown> {
   type: string
   data: T
   timestamp: string
@@ -28,8 +28,8 @@ interface UseWebSocketReturn {
   status: WebSocketStatus
   isConnected: boolean
   lastMessage: WebSocketMessage | null
-  send: (type: string, data: any) => void
-  subscribe: (type: string, callback: (data: any) => void) => () => void
+  send: (type: string, data: unknown) => void
+  subscribe: (type: string, callback: (data: unknown) => void) => () => void
   connect: () => void
   disconnect: () => void
 }
@@ -88,13 +88,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectCount = useRef(0)
   const heartbeatTimer = useRef<NodeJS.Timeout | null>(null)
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null)
-  const subscribers = useRef<Map<string, Set<(data: any) => void>>>(new Map())
+  const subscribers = useRef<Map<string, Set<(data: unknown) => void>>>(new Map())
 
   const [status, setStatus] = useState<WebSocketStatus>("disconnected")
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
 
   // Send message
-  const send = useCallback((type: string, data: any) => {
+  const send = useCallback((type: string, data: unknown) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       const message: WebSocketMessage = {
         type,
@@ -248,7 +248,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
   // Subscribe to message type
   const subscribe = useCallback(
-    (type: string, callback: (data: any) => void): (() => void) => {
+    (type: string, callback: (data: unknown) => void): (() => void) => {
       if (!subscribers.current.has(type)) {
         subscribers.current.set(type, new Set())
       }
@@ -305,7 +305,7 @@ export function useDocumentUpdates() {
   const [processingDocuments, setProcessingDocuments] = useState<Set<string>>(new Set())
 
   const onDocumentProcessed = useCallback(
-    (callback: (document: any) => void) => {
+    (callback: (document: unknown) => void) => {
       return subscribe("document.processed", (data) => {
         setProcessingDocuments((prev) => {
           const newSet = new Set(prev)
@@ -319,7 +319,7 @@ export function useDocumentUpdates() {
   )
 
   const onDocumentFailed = useCallback(
-    (callback: (error: any) => void) => {
+    (callback: (error: unknown) => void) => {
       return subscribe("document.failed", (data) => {
         setProcessingDocuments((prev) => {
           const newSet = new Set(prev)
@@ -333,7 +333,7 @@ export function useDocumentUpdates() {
   )
 
   const onProcessingStarted = useCallback(
-    (callback: (document: any) => void) => {
+    (callback: (document: unknown) => void) => {
       return subscribe("document.processing", (data) => {
         setProcessingDocuments((prev) => new Set(prev).add(data.documentId))
         callback(data)

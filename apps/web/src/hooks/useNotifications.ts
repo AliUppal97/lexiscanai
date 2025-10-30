@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useWebSocket } from "./useWebSocket"
+import { useAuth } from "./useAuth"
 import { notificationService } from "@/services/notificationService"
 import type { Notification } from "@/components/dashboard/NotificationCenter"
 
@@ -74,6 +75,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
     unreadOnly = false
   } = options
 
+  const { user, session } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +84,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
   // WebSocket connection for real-time updates
   const { isConnected } = useWebSocket({
     url: `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api").replace('http', 'ws')}/notifications`,
-    autoConnect: enableRealtime,
+    autoConnect: enableRealtime && !!user && !!session,
     onMessage: (message) => {
       if (message.type === 'notification') {
         handleNewNotification(message.data)
@@ -99,6 +101,13 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
   const fetchNotifications = useCallback(async () => {
     try {
       setError(null)
+      
+      // Only fetch notifications if user is authenticated
+      if (!user || !session) {
+        setNotifications([])
+        setIsLoading(false)
+        return
+      }
       
       const data = await notificationService.getNotifications({
         limit,
@@ -140,7 +149,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
     } finally {
       setIsLoading(false)
     }
-  }, [limit, unreadOnly])
+  }, [limit, unreadOnly, user, session])
 
   /**
    * Handle new notification from WebSocket
@@ -178,7 +187,10 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
         prev.map(n => n.id === id ? { ...n, isRead: true } : n)
       )
 
-      await notificationService.markAsRead(id)
+      // Only make API call if user is authenticated
+      if (user && session) {
+        await notificationService.markAsRead(id)
+      }
     } catch (err) {
       // Revert optimistic update on error
       setNotifications(prev => 
@@ -187,7 +199,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       console.error('Failed to mark notification as read:', err)
       setError(err instanceof Error ? err.message : 'Failed to mark notification as read')
     }
-  }, [])
+  }, [user, session])
 
   /**
    * Mark all notifications as read
@@ -199,7 +211,10 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
         prev.map(n => ({ ...n, isRead: true }))
       )
 
-      await notificationService.markAllAsRead()
+      // Only make API call if user is authenticated
+      if (user && session) {
+        await notificationService.markAllAsRead()
+      }
     } catch (err) {
       // Revert optimistic update on error
       setNotifications(prev => 
@@ -208,20 +223,23 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       console.error('Failed to mark all notifications as read:', err)
       setError(err instanceof Error ? err.message : 'Failed to mark all notifications as read')
     }
-  }, [])
+  }, [user, session])
 
   /**
    * Clear all notifications
    */
   const clearAll = useCallback(async () => {
     try {
-      await notificationService.clearAll()
+      // Only make API call if user is authenticated
+      if (user && session) {
+        await notificationService.clearAll()
+      }
       setNotifications([])
     } catch (err) {
       console.error('Failed to clear all notifications:', err)
       setError(err instanceof Error ? err.message : 'Failed to clear all notifications')
     }
-  }, [])
+  }, [user, session])
 
   /**
    * Refresh notifications
