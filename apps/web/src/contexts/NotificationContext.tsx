@@ -4,6 +4,7 @@ import React, { createContext, useContext, useCallback, ReactNode } from "react"
 import { useToast, toast as globalToast, type Toast, type ToastType } from "@/hooks/useToast"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { useEffect } from "react"
+import type { JsonObject } from "@lexiscan/shared-types"
 
 /**
  * NotificationContext - Global notification system
@@ -38,7 +39,7 @@ export interface Notification {
     label: string
     onClick: () => void
   }
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 interface NotificationContextValue {
@@ -89,10 +90,18 @@ export function NotificationProvider({
   useEffect(() => {
     if (!enableRealtime) return
 
-    const unsubscribe = subscribe("notification", (data: unknown) => {
+    type IncomingNotificationPayload = {
+      type?: Notification["type"]
+      title: string
+      message?: string
+      action?: Notification["action"]
+      metadata?: JsonObject
+    }
+
+    const unsubscribe = subscribe<IncomingNotificationPayload>("notification", (data) => {
       // Add to notification center
       addNotification({
-        type: data.type || "info",
+        type: data.type ?? "info",
         title: data.title,
         message: data.message,
         action: data.action,

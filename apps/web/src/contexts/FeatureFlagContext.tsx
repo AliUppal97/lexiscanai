@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useTenantContext } from "./TenantContext"
+import type { JsonObject } from "@lexiscan/shared-types"
 
 /**
  * FeatureFlagContext - Feature flag / toggle management
@@ -30,7 +31,7 @@ import { useTenantContext } from "./TenantContext"
  * }
  */
 
-export type FeatureFlagValue = boolean | string | number | object
+export type FeatureFlagValue = boolean | string | number | JsonObject
 
 export interface FeatureFlag {
   key: string
@@ -254,7 +255,7 @@ export function FeatureFlagProvider({
     }
     
     if (typeof flag.value === "object" && flag.value !== null) {
-      const variants = flag.value as Record<string, unknown>
+      const variants = flag.value as JsonObject
       
       if (!user) return Object.keys(variants)[0] || null
       
