@@ -85,8 +85,17 @@ export enum BillingStatus {
   PAST_DUE = 'PAST_DUE',
 }
 
+// ----------------------------------------------------------------------------
+// GENERIC JSON-SAFE TYPES
+// ----------------------------------------------------------------------------
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+export type JsonObject = { [key: string]: JsonValue };
+export type JsonArray = JsonValue[];
+
 // API Response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -200,7 +209,7 @@ export interface ProcessingResult {
 export interface ReportRequest {
   reportType: ReportType;
   documentIds: string[];
-  templateData: Record<string, any>;
+  templateData: JsonObject;
   format: ReportFormat;
 }
 
@@ -232,7 +241,7 @@ export interface ReportTask {
 export interface ApiError {
   code: string;
   message: string;
-  details?: Record<string, any>;
+  details?: JsonObject;
 }
 
 export enum ErrorCode {
