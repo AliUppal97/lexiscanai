@@ -46,7 +46,17 @@ class NotificationService {
     const token = this.getAuthToken()
     
     if (!token) {
-      throw new Error('No authentication token found')
+      // Return empty data instead of throwing error when no token is available
+      // This allows the app to work without authentication
+      if (endpoint.includes('/notifications')) {
+        return {
+          notifications: [],
+          total: 0,
+          unreadCount: 0
+        } as T
+      }
+      // For other endpoints, return empty object
+      return {} as T
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {

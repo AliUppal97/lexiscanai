@@ -254,7 +254,7 @@ export function FeatureFlagProvider({
     }
     
     if (typeof flag.value === "object" && flag.value !== null) {
-      const variants = flag.value as Record<string, any>
+      const variants = flag.value as Record<string, unknown>
       
       if (!user) return Object.keys(variants)[0] || null
       
@@ -410,10 +410,9 @@ export function withFeatureFlag<P extends object>(
  */
 export function FeatureFlagDebugger() {
   const { flags, isEnabled, enableFlag, disableFlag, resetFlags } = useFeatureFlags()
+  const [isOpen, setIsOpen] = useState(false)
 
   if (process.env.NODE_ENV !== "development") return null
-
-  const [isOpen, setIsOpen] = useState(false)
 
   return (
     <>

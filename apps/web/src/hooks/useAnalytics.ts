@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 export interface AnalyticsEvent {
   name: string
-  properties?: Record<string, any>
+  properties?: Record<string, unknown>
   timestamp?: string
   userId?: string
   sessionId?: string
@@ -28,17 +28,17 @@ interface UseAnalyticsOptions {
 
 interface UseAnalyticsReturn {
   // Event tracking
-  track: (eventName: string, properties?: Record<string, any>) => void
-  trackPageView: (path?: string, properties?: Record<string, any>) => void
-  trackClick: (element: string, properties?: Record<string, any>) => void
-  identify: (userId: string, traits?: Record<string, any>) => void
+  track: (eventName: string, properties?: Record<string, unknown>) => void
+  trackPageView: (path?: string, properties?: Record<string, unknown>) => void
+  trackClick: (element: string, properties?: Record<string, unknown>) => void
+  identify: (userId: string, traits?: Record<string, unknown>) => void
   // Performance tracking
-  trackPerformance: (metric: string, value: number, properties?: Record<string, any>) => void
-  trackError: (error: Error, properties?: Record<string, any>) => void
+  trackPerformance: (metric: string, value: number, properties?: Record<string, unknown>) => void
+  trackError: (error: Error, properties?: Record<string, unknown>) => void
   // Conversion tracking
-  trackConversion: (event: string, revenue?: number, properties?: Record<string, any>) => void
+  trackConversion: (event: string, revenue?: number, properties?: Record<string, unknown>) => void
   // User properties
-  setUserProperties: (properties: Record<string, any>) => void
+  setUserProperties: (properties: Record<string, unknown>) => void
 }
 
 const ANALYTICS_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
@@ -105,7 +105,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Log in debug mode
   const debugLog = useCallback(
-    (...args: any[]) => {
+    (...args: unknown[]) => {
       if (debug) {
         console.log("[Analytics]", ...args)
       }
@@ -136,13 +136,13 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
         })
 
         // Send to Google Analytics 4 if available
-        if (typeof window !== "undefined" && (window as any).gtag) {
-          (window as any).gtag("event", event.name, event.properties)
+        if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
+          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", event.name, event.properties)
         }
 
         // Send to PostHog if available
-        if (typeof window !== "undefined" && (window as any).posthog) {
-          (window as any).posthog.capture(event.name, event.properties)
+        if (typeof window !== "undefined" && (window as unknown as { posthog?: { capture: (name: string, properties?: unknown) => void } }).posthog) {
+          (window as unknown as { posthog: { capture: (name: string, properties?: unknown) => void } }).posthog.capture(event.name, event.properties)
         }
       } catch (error) {
         console.error("Failed to send analytics event:", error)
@@ -153,7 +153,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track custom event
   const track = useCallback(
-    (eventName: string, properties?: Record<string, any>) => {
+    (eventName: string, properties?: Record<string, unknown>) => {
       sendEvent({
         name: eventName,
         properties,
@@ -164,7 +164,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track page view
   const trackPageView = useCallback(
-    (path?: string, properties?: Record<string, any>) => {
+    (path?: string, properties?: Record<string, unknown>) => {
       const pagePath = path || pathname
       const pageSearch = searchParams?.toString()
 
@@ -192,7 +192,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track click event
   const trackClick = useCallback(
-    (element: string, properties?: Record<string, any>) => {
+    (element: string, properties?: Record<string, unknown>) => {
       sendEvent({
         name: "Click",
         properties: {
@@ -207,16 +207,16 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Identify user
   const identify = useCallback(
-    (userId: string, traits?: Record<string, any>) => {
+    (userId: string, traits?: Record<string, unknown>) => {
       if (typeof window !== "undefined") {
         // Google Analytics
-        if ((window as any).gtag) {
-          (window as any).gtag("set", { user_id: userId })
+        if ((window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
+          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("set", { user_id: userId })
         }
 
         // PostHog
-        if ((window as any).posthog) {
-          (window as any).posthog.identify(userId, traits)
+        if ((window as unknown as { posthog?: { identify: (userId: string, traits?: unknown) => void } }).posthog) {
+          (window as unknown as { posthog: { identify: (userId: string, traits?: unknown) => void } }).posthog.identify(userId, traits)
         }
       }
 
@@ -233,7 +233,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track performance metric
   const trackPerformance = useCallback(
-    (metric: string, value: number, properties?: Record<string, any>) => {
+    (metric: string, value: number, properties?: Record<string, unknown>) => {
       sendEvent({
         name: "Performance",
         properties: {
@@ -244,8 +244,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       })
 
       // Send to Google Analytics as custom metric
-      if (typeof window !== "undefined" && (window as any).gtag) {
-        (window as any).gtag("event", "timing_complete", {
+      if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
+        (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", "timing_complete", {
           name: metric,
           value: Math.round(value),
           event_category: "Performance",
@@ -257,7 +257,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track error
   const trackError = useCallback(
-    (error: Error, properties?: Record<string, any>) => {
+    (error: Error, properties?: Record<string, unknown>) => {
       sendEvent({
         name: "Error",
         properties: {
@@ -271,8 +271,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       // Send to error tracking services
       if (typeof window !== "undefined") {
         // Sentry
-        if ((window as any).Sentry) {
-          (window as any).Sentry.captureException(error)
+        if ((window as unknown as { Sentry?: { captureException: (error: Error) => void } }).Sentry) {
+          (window as unknown as { Sentry: { captureException: (error: Error) => void } }).Sentry.captureException(error)
         }
       }
     },
@@ -281,7 +281,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Track conversion
   const trackConversion = useCallback(
-    (event: string, revenue?: number, properties?: Record<string, any>) => {
+    (event: string, revenue?: number, properties?: Record<string, unknown>) => {
       sendEvent({
         name: "Conversion",
         properties: {
@@ -293,8 +293,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       })
 
       // Send to Google Analytics
-      if (typeof window !== "undefined" && (window as any).gtag) {
-        (window as any).gtag("event", "purchase", {
+      if (typeof window !== "undefined" && (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
+        (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("event", "purchase", {
           transaction_id: `txn_${Date.now()}`,
           value: revenue,
           currency: "USD",
@@ -307,16 +307,16 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
   // Set user properties
   const setUserProperties = useCallback(
-    (properties: Record<string, any>) => {
+    (properties: Record<string, unknown>) => {
       if (typeof window !== "undefined") {
         // Google Analytics
-        if ((window as any).gtag) {
-          (window as any).gtag("set", "user_properties", properties)
+        if ((window as unknown as { gtag?: (...args: unknown[]) => void }).gtag) {
+          (window as unknown as { gtag: (...args: unknown[]) => void }).gtag("set", "user_properties", properties)
         }
 
         // PostHog
-        if ((window as any).posthog) {
-          (window as any).posthog.setPersonProperties(properties)
+        if ((window as unknown as { posthog?: { setPersonProperties: (properties: unknown) => void } }).posthog) {
+          (window as unknown as { posthog: { setPersonProperties: (properties: unknown) => void } }).posthog.setPersonProperties(properties)
         }
       }
 
@@ -389,8 +389,10 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       // First Input Delay (FID)
       const fidObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries()
-        entries.forEach((entry: any) => {
-          trackPerformance("FID", entry.processingStart - entry.startTime)
+        entries.forEach((entry: PerformanceEntry & { processingStart?: number }) => {
+          if (entry.processingStart) {
+            trackPerformance("FID", entry.processingStart - entry.startTime)
+          }
         })
       })
 
@@ -430,7 +432,7 @@ export function useFeatureTracking(featureName: string) {
   }, [featureName, track])
 
   const trackFeatureUsed = useCallback(
-    (action: string, properties?: Record<string, any>) => {
+    (action: string, properties?: Record<string, unknown>) => {
       track("Feature Used", {
         feature: featureName,
         action,

@@ -38,7 +38,7 @@ export interface Notification {
     label: string
     onClick: () => void
   }
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 interface NotificationContextValue {
@@ -89,7 +89,7 @@ export function NotificationProvider({
   useEffect(() => {
     if (!enableRealtime) return
 
-    const unsubscribe = subscribe("notification", (data: any) => {
+    const unsubscribe = subscribe("notification", (data: unknown) => {
       // Add to notification center
       addNotification({
         type: data.type || "info",
@@ -109,7 +109,7 @@ export function NotificationProvider({
     })
 
     return unsubscribe
-  }, [enableRealtime, subscribe, toastError, toastSuccess, toastWarning, toastInfo])
+  }, [enableRealtime, subscribe, toastError, toastSuccess, toastWarning, toastInfo, addNotification])
 
   // Add notification to center
   const addNotification = useCallback((notification: Omit<Notification, "id" | "timestamp" | "read">) => {
