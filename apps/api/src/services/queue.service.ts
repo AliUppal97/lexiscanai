@@ -198,15 +198,15 @@ export class QueueService implements OnModuleDestroy {
       limiter: options?.limiter,
     });
 
-    worker.on('completed', (job) => {
+    worker.on('completed', (job: Job) => {
       this.logger.log(`Job completed: ${job.id} in ${queueName}`);
     });
 
-    worker.on('failed', (job, error) => {
+    worker.on('failed', (job: Job | null, error: Error) => {
       this.logger.error(`Job failed: ${job?.id} in ${queueName} - ${error.message}`);
     });
 
-    worker.on('error', (error) => {
+    worker.on('error', (error: Error) => {
       this.logger.error(`Worker error in ${queueName}: ${error.message}`);
     });
 
