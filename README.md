@@ -151,11 +151,19 @@ lexiscan/
 
 ## 📚 Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Security Guidelines](docs/SECURITY.md)
-- [Onboarding Guide](docs/ONBOARDING.md)
-- [API Documentation](http://localhost:3001/api/docs)
-- [Deployment Guide](docs/DEPLOYMENT.md)
+- Unified Docs Hub: docs/README.md (now browsable via MkDocs)
+- Architecture Overview: docs/ARCHITECTURE.md
+- Security Guidelines: docs/SECURITY.md
+- Onboarding Guide: docs/ONBOARDING.md
+- API Documentation: docs/api/openapi.yaml (local UI at http://localhost:3001/api/docs)
+- Deployment Guide: docs/deployment/aws-deployment.md
+
+### View docs locally (MkDocs)
+```bash
+pip install mkdocs-material
+mkdocs serve
+# open http://127.0.0.1:8000
+```
 
 ## 🧪 Testing
 
