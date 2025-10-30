@@ -14,8 +14,30 @@ export class LoginDto {
   @MinLength(8)
   password: string;
 
+  @IsOptional()
   @IsString()
-  tenantSlug: string;
+  tenantSlug?: string;
+}
+
+export class RegisterDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  tenantSlug?: string;
 }
 
 export class CreateTenantRequestDto {
@@ -53,6 +75,20 @@ export class AuthController {
     private userManagementService: UserManagementService,
   ) {}
 
+  @Post('register')
+  @ApiOperation({ summary: 'User registration' })
+  @ApiResponse({ status: 201, description: 'Registration successful' })
+  @ApiResponse({ status: 409, description: 'Email already exists in tenant' })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register({
+      email: dto.email,
+      password: dto.password,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      tenantSlug: dto.tenantSlug,
+    });
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'User login' })
@@ -74,10 +110,33 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
   async getProfile(@Request() req) {
-    return {
-      user: req.user,
-      tenantId: req.tenantId,
-    };
+    return req.user;
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout current session' })
+  @ApiResponse({ status: 200, description: 'Logout successful' })
+  async logout() {
+    return { message: 'Logged out successfully' };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset' })
+  @ApiResponse({ status: 200, description: 'Password reset email sent if account exists' })
+  async forgotPassword(@Body() body: { email: string }) {
+    // Intentionally always return 200 to avoid email enumeration
+    await this.authService.requestPasswordReset(body.email).catch(() => undefined);
+    return { message: 'If the account exists, a reset email has been sent.' };
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password using token' })
+  async resetPassword(@Body() body: { token: string; newPassword: string }) {
+    return this.authService.resetPassword(body.token, body.newPassword);
   }
 }
 
