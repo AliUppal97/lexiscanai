@@ -1,0 +1,80 @@
+site_name: LexiScan AI Docs
+site_description: Enterprise document processing platform documentation
+site_url: https://docs.lexiscan.ai
+repo_url: https://github.com/your-org/lexiscan
+repo_name: your-org/lexiscan
+edit_uri: ''
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.tabs
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+    - scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+      primary: indigo
+      accent: indigo
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - tables
+  - footnotes
+  - def_list
+
+plugins:
+  - search
+
+nav:
+  - Overview: docs/README.md
+  - Getting Started:
+      - Quick Start: QUICK_START.md
+      - Local Setup: docs/development/local-setup.md
+      - Onboarding: docs/ONBOARDING.md
+      - Authentication: docs/AUTHENTICATION.md
+  - Architecture:
+      - Architecture Overview: docs/ARCHITECTURE.md
+      - Security: docs/SECURITY.md
+  - API:
+      - API Overview: docs/api/README.md
+      - OpenAPI (YAML): docs/api/openapi.yaml
+      - Authentication: docs/api/authentication.md
+      - Rate Limiting: docs/api/rate-limiting.md
+      - Webhooks: docs/api/webhooks.md
+  - Development:
+      - Coding Standards: docs/development/coding-standards.md
+      - Commands: COMMANDS.md
+      - Run Project: RUN_PROJECT.md
+      - Tests Overview: tests/README.md
+  - Deployment:
+      - Overview: docs/deployment/aws-deployment.md
+      - Kubernetes: docs/deployment/kubernetes-deployment.md
+      - Infrastructure: infra/README.md
+      - Monitoring: monitoring/README.md
+  - Operations:
+      - Playbooks: ops/playbooks/README.md
+      - Runbooks: ops/runbooks/deployment.md
+      - Observability: ops/observability/README.md
+  - Governance:
+      - Contributing: CONTRIBUTING.md
+      - Code of Conduct: CODE_OF_CONDUCT.md
+      - Security Policy: docs/SECURITY.md
+      - Release Process: RELEASE.md
+      - Changelog: CHANGELOG.md
+      - Roadmap: ROADMAP.md
+      - Support: SUPPORT.md
+  - ADRs:
+      - Introduction: docs/adr/README.md
