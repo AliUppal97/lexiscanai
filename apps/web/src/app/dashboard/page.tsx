@@ -1,11 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { 
   FileText, 
   Upload, 
   Brain, 
   Users, 
-  TrendingUp, 
   Clock,
   CheckCircle,
   AlertTriangle,
@@ -92,28 +92,32 @@ const quickActions = [
     description: "Upload and analyze a new document",
     icon: Upload,
     href: "/dashboard/upload",
-    color: "blue",
+    iconBgColor: "bg-blue-100",
+    iconColor: "text-blue-600",
   },
   {
     name: "View Analytics",
     description: "Check detailed analysis reports",
     icon: BarChart3,
     href: "/dashboard/analytics",
-    color: "green",
+    iconBgColor: "bg-green-100",
+    iconColor: "text-green-600",
   },
   {
     name: "Manage Team",
     description: "Invite and manage team members",
     icon: Users,
     href: "/dashboard/team",
-    color: "purple",
+    iconBgColor: "bg-purple-100",
+    iconColor: "text-purple-600",
   },
   {
     name: "View History",
     description: "Browse all processed documents",
     icon: Activity,
     href: "/dashboard/history",
-    color: "orange",
+    iconBgColor: "bg-orange-100",
+    iconColor: "text-orange-600",
   },
 ]
 
@@ -163,19 +167,21 @@ export default function DashboardPage() {
         <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {quickActions.map((action) => (
-            <Card key={action.name} className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <div className={`flex-shrink-0 p-3 rounded-lg bg-${action.color}-100`}>
-                    <action.icon className={`h-6 w-6 text-${action.color}-600`} />
+            <Link key={action.name} href={action.href}>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className={`flex-shrink-0 p-3 rounded-lg ${action.iconBgColor}`}>
+                      <action.icon className={`h-6 w-6 ${action.iconColor}`} />
+                    </div>
+                    <div className="ml-4">
+                      <h3 className="text-sm font-medium text-gray-900">{action.name}</h3>
+                      <p className="text-sm text-gray-500">{action.description}</p>
+                    </div>
                   </div>
-                  <div className="ml-4">
-                    <h3 className="text-sm font-medium text-gray-900">{action.name}</h3>
-                    <p className="text-sm text-gray-500">{action.description}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       </div>
@@ -228,8 +234,10 @@ export default function DashboardPage() {
               ))}
             </div>
             <div className="mt-4">
-              <Button variant="outline" className="w-full">
-                View All Documents
+              <Button variant="outline" className="w-full" asChild>
+                <Link href="/dashboard/documents">
+                  View All Documents
+                </Link>
               </Button>
             </div>
           </CardContent>

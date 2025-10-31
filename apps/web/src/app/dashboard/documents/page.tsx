@@ -1,17 +1,16 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { 
   FileText, 
   Search, 
-  Filter, 
   Download, 
   Eye, 
   Trash2, 
   MoreVertical,
   Calendar,
   User,
-  Tag,
   Clock,
   CheckCircle,
   AlertTriangle,
@@ -42,7 +41,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const documents = [
   {
@@ -165,6 +163,56 @@ export default function DocumentsPage() {
     )
   }
 
+  const handleExport = (selectedOnly = false) => {
+    // Determine which documents to export
+    const documentsToExport = selectedOnly 
+      ? filteredDocuments.filter(doc => selectedDocuments.includes(doc.id))
+      : filteredDocuments
+
+    // Check if there are documents to export
+    if (documentsToExport.length === 0) {
+      return
+    }
+
+    // Prepare CSV data
+    const headers = ["Name", "Type", "Status", "Uploaded By", "Date", "Size", "Confidence", "Tags", "Analysis"]
+    const csvRows = [headers.join(",")]
+
+    documentsToExport.forEach(doc => {
+      const row = [
+        `"${doc.name.replace(/"/g, '""')}"`,
+        `"${doc.type}"`,
+        `"${doc.status}"`,
+        `"${doc.uploadedBy}"`,
+        `"${doc.uploadedAt}"`,
+        `"${doc.size}"`,
+        doc.confidence ? doc.confidence.toString() : "-",
+        `"${doc.tags.join("; ")}"`,
+        `"${(doc.analysis || "").replace(/"/g, '""')}"`
+      ]
+      csvRows.push(row.join(","))
+    })
+
+    // Create CSV content
+    const csvContent = csvRows.join("\n")
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split("T")[0]
+    const filePrefix = selectedOnly ? "selected-documents" : "documents-export"
+    link.download = `${filePrefix}-${timestamp}.csv`
+    
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -174,13 +222,15 @@ export default function DocumentsPage() {
           <p className="text-gray-600">Manage and analyze your uploaded documents</p>
         </div>
         <div className="flex items-center space-x-3">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => handleExport(false)}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Upload Document
+          <Button size="sm" asChild>
+            <Link href="/dashboard/upload">
+              <Plus className="h-4 w-4 mr-2" />
+              Upload Document
+            </Link>
           </Button>
         </div>
       </div>
@@ -246,7 +296,7 @@ export default function DocumentsPage() {
         </CardContent>
       </Card>
 
-      {/* Documents Table */}
+      {/* Documents Display */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -258,7 +308,7 @@ export default function DocumentsPage() {
             </div>
             {selectedDocuments.length > 0 && (
               <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => handleExport(true)}>
                   <Download className="h-4 w-4 mr-2" />
                   Download Selected
                 </Button>
@@ -271,110 +321,206 @@ export default function DocumentsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
+          {viewMode === "list" ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedDocuments.length === filteredDocuments.length && filteredDocuments.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead>Document</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Uploaded By</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Size</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDocuments.map((doc) => (
+                  <TableRow key={doc.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedDocuments.includes(doc.id)}
+                        onCheckedChange={() => handleSelectDocument(doc.id)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        <FileText className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <div className="font-medium text-gray-900">{doc.name}</div>
+                          <div className="text-sm text-gray-500">{doc.analysis}</div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {doc.tags.map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{doc.type}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(doc.status)}
+                        {getStatusBadge(doc.status)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <User className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm">{doc.uploadedBy}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm">{doc.uploadedAt}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-500">{doc.size}</TableCell>
+                    <TableCell>
+                      {doc.confidence ? (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          {doc.confidence}%
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuItem>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-red-600">
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
                   <Checkbox
                     checked={selectedDocuments.length === filteredDocuments.length && filteredDocuments.length > 0}
                     onCheckedChange={handleSelectAll}
                   />
-                </TableHead>
-                <TableHead>Document</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Uploaded By</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Confidence</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredDocuments.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedDocuments.includes(doc.id)}
-                      onCheckedChange={() => handleSelectDocument(doc.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-3">
-                      <FileText className="h-5 w-5 text-gray-400" />
-                      <div>
-                        <div className="font-medium text-gray-900">{doc.name}</div>
-                        <div className="text-sm text-gray-500">{doc.analysis}</div>
-                        <div className="flex flex-wrap gap-1 mt-1">
+                  <span className="text-sm text-gray-600">
+                    {selectedDocuments.length > 0 
+                      ? `${selectedDocuments.length} selected` 
+                      : "Select all"}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredDocuments.map((doc) => (
+                  <Card key={doc.id} className={`hover:shadow-md transition-shadow ${selectedDocuments.includes(doc.id) ? 'ring-2 ring-blue-500' : ''}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={selectedDocuments.includes(doc.id)}
+                            onCheckedChange={() => handleSelectDocument(doc.id)}
+                          />
+                          <FileText className="h-8 w-8 text-blue-600" />
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600">
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="font-medium text-gray-900 line-clamp-2">{doc.name}</h3>
+                        <p className="text-sm text-gray-500 line-clamp-2">{doc.analysis}</p>
+                        <div className="flex flex-wrap gap-1">
                           {doc.tags.map((tag) => (
                             <Badge key={tag} variant="outline" className="text-xs">
                               {tag}
                             </Badge>
                           ))}
                         </div>
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <Badge variant="outline" className="text-xs">{doc.type}</Badge>
+                          <div className="flex items-center space-x-1">
+                            {getStatusIcon(doc.status)}
+                            {getStatusBadge(doc.status)}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t text-xs text-gray-500">
+                          <div className="flex items-center space-x-1">
+                            <User className="h-3 w-3" />
+                            <span className="truncate">{doc.uploadedBy}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{doc.uploadedAt}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-xs text-gray-500">{doc.size}</span>
+                          {doc.confidence ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                              {doc.confidence}% confidence
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{doc.type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(doc.status)}
-                      {getStatusBadge(doc.status)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <User className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm">{doc.uploadedBy}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm">{doc.uploadedAt}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-gray-500">{doc.size}</TableCell>
-                  <TableCell>
-                    {doc.confidence ? (
-                      <Badge variant="secondary" className="bg-green-100 text-green-800">
-                        {doc.confidence}%
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-gray-400">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
