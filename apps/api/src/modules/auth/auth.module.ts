@@ -9,6 +9,7 @@ import { SecurityService } from './security.service';
 import { SessionService } from './session.service';
 import { MfaService } from './mfa.service';
 import { ApiKeyService } from './api-key.service';
+import { SsoService } from './sso.service';
 import { JwtAuthGuard, PermissionsGuard, RolesGuard } from './auth.guard';
 import { EnhancedJwtAuthGuard, ApiKeyAuthGuard, OptionalAuthGuard } from './enhanced-auth.guard';
 import { PrismaService } from '../../common/prisma.service';
@@ -37,6 +38,7 @@ import { CacheService } from '../../services/cache.service';
     SessionService,
     MfaService,
     ApiKeyService,
+    SsoService,
     
     // Guards (backward compatibility)
     JwtAuthGuard,
@@ -60,6 +62,7 @@ import { CacheService } from '../../services/cache.service';
     SessionService,
     MfaService,
     ApiKeyService,
+    SsoService,
     
     // Guards
     JwtAuthGuard,
