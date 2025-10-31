@@ -20,3 +20,5 @@ Adopt Architecture Decision Records (ADRs) stored under `docs/adr/`. Use the tem
 
 ## References
 - Michael Nygard, "Documenting Architecture Decisions"
+
+

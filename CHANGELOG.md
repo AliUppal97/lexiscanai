@@ -22,3 +22,5 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 [Unreleased]: https://github.com/your-org/lexiscan/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/your-org/lexiscan/releases/tag/v1.0.0
+
+

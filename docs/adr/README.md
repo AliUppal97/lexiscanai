@@ -12,3 +12,5 @@ ADRs capture significant architectural decisions, their context, and consequence
 
 ## Status keys
 - Proposed, Accepted, Rejected, Superseded
+
+
