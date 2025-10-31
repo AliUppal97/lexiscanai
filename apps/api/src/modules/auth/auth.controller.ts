@@ -18,6 +18,7 @@ import { UserManagementService, CreateTenantDto } from './user-management.servic
 import { SecurityService } from './security.service';
 import { SessionService } from './session.service';
 import { MfaService } from './mfa.service';
+import { SsoService, CreateSsoProviderDto } from './sso.service';
 import { EnhancedJwtAuthGuard } from './enhanced-auth.guard';
 import { IsEmail, IsString, MinLength, IsOptional, IsArray } from 'class-validator';
 
@@ -113,6 +114,51 @@ export class SendSmsCodeDto {
   phoneNumber?: string;
 }
 
+export class CreateSsoProviderRequestDto {
+  @IsString()
+  provider: 'GOOGLE' | 'MICROSOFT' | 'OAUTH2' | 'SAML';
+
+  @IsString()
+  name: string;
+
+  @IsString()
+  clientId: string;
+
+  @IsString()
+  clientSecret: string;
+
+  @IsOptional()
+  @IsString()
+  authorizationURL?: string;
+
+  @IsOptional()
+  @IsString()
+  tokenURL?: string;
+
+  @IsOptional()
+  @IsString()
+  userInfoURL?: string;
+
+  @IsOptional()
+  @IsString()
+  issuerURL?: string;
+
+  @IsOptional()
+  @IsString()
+  domain?: string;
+
+  @IsOptional()
+  @IsArray()
+  scopes?: string[];
+
+  @IsOptional()
+  @IsString()
+  callbackURL?: string;
+
+  @IsOptional()
+  isDefault?: boolean;
+}
+
 export class CreateTenantRequestDto {
   @IsString()
   name: string;
@@ -149,6 +195,7 @@ export class AuthController {
     private sessionService: SessionService,
     private mfaService: MfaService,
     private securityService: SecurityService,
+    private ssoService: SsoService,
   ) {}
 
   @Post('register')
@@ -411,6 +458,130 @@ export class AuthController {
     if (strength < 60) return 'Fair';
     if (strength < 80) return 'Good';
     return 'Strong';
+  }
+
+  // SSO Endpoints
+  @Get('sso/providers')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get SSO providers for current tenant' })
+  @ApiResponse({ status: 200, description: 'SSO providers retrieved' })
+  async getSsoProviders(@Request() req) {
+    return this.ssoService.getSsoProviders(req.tenantId);
+  }
+
+  @Post('sso/providers')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create or update SSO provider' })
+  @ApiResponse({ status: 201, description: 'SSO provider created/updated' })
+  @ApiResponse({ status: 400, description: 'Invalid provider configuration' })
+  async createSsoProvider(@Body() dto: CreateSsoProviderRequestDto, @Request() req) {
+    const ssoDto: CreateSsoProviderDto = {
+      tenantId: req.tenantId,
+      provider: dto.provider as any,
+      name: dto.name,
+      config: {
+        clientId: dto.clientId,
+        clientSecret: dto.clientSecret,
+        authorizationURL: dto.authorizationURL,
+        tokenURL: dto.tokenURL,
+        userInfoURL: dto.userInfoURL,
+        issuerURL: dto.issuerURL,
+        domain: dto.domain,
+        scopes: dto.scopes,
+        callbackURL: dto.callbackURL,
+      },
+      isDefault: dto.isDefault,
+    };
+
+    return this.ssoService.createSsoProvider(ssoDto);
+  }
+
+  @Get('sso/authorize')
+  @ApiOperation({ summary: 'Get SSO authorization URL' })
+  @ApiResponse({ status: 200, description: 'Authorization URL generated' })
+  @ApiQuery({ name: 'tenantId', required: true })
+  @ApiQuery({ name: 'provider', required: true, enum: ['GOOGLE', 'MICROSOFT', 'OAUTH2'] })
+  @ApiQuery({ name: 'redirectUri', required: false })
+  async getSsoAuthorizationUrl(
+    @Query('tenantId') tenantId: string,
+    @Query('provider') provider: string,
+    @Query('redirectUri') redirectUri?: string,
+  ) {
+    const result = await this.ssoService.getAuthorizationUrl(
+      tenantId,
+      provider as any,
+      redirectUri,
+    );
+    return {
+      authorizationUrl: result.url,
+      state: result.state,
+    };
+  }
+
+  @Post('sso/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle SSO OAuth2/OIDC callback' })
+  @ApiResponse({ status: 200, description: 'SSO authentication successful' })
+  @ApiResponse({ status: 401, description: 'SSO authentication failed' })
+  async ssoCallback(@Body() body: { code: string; state: string; provider: string; tenantId?: string }, @Request() req) {
+    return this.ssoService.handleCallback(
+      {
+        code: body.code,
+        state: body.state,
+        provider: body.provider as any,
+        tenantId: body.tenantId,
+      },
+      req,
+    );
+  }
+
+  @Get('sso/callback')
+  @ApiOperation({ summary: 'Handle SSO OAuth2/OIDC callback (GET)' })
+  @ApiResponse({ status: 200, description: 'SSO authentication successful' })
+  @ApiQuery({ name: 'code', required: true })
+  @ApiQuery({ name: 'state', required: true })
+  @ApiQuery({ name: 'provider', required: false })
+  @ApiQuery({ name: 'tenantId', required: false })
+  async ssoCallbackGet(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Request() req: any,
+    @Query('provider') provider?: string,
+    @Query('tenantId') tenantId?: string,
+  ) {
+    return this.ssoService.handleCallback(
+      {
+        code,
+        state,
+        provider: (provider as any) || 'GOOGLE',
+        tenantId,
+      },
+      req,
+    );
+  }
+
+  @Delete('sso/providers/:provider')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete SSO provider' })
+  @ApiResponse({ status: 200, description: 'SSO provider deleted' })
+  async deleteSsoProvider(@Param('provider') provider: string, @Request() req) {
+    await this.ssoService.deleteSsoProvider(req.tenantId, provider as any);
+    return { message: 'SSO provider deleted successfully' };
+  }
+
+  @Put('sso/providers/:provider/disable')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable SSO provider' })
+  @ApiResponse({ status: 200, description: 'SSO provider disabled' })
+  async disableSsoProvider(@Param('provider') provider: string, @Request() req) {
+    await this.ssoService.disableSsoProvider(req.tenantId, provider as any);
+    return { message: 'SSO provider disabled successfully' };
   }
 }
 
