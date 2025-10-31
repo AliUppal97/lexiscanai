@@ -243,6 +243,7 @@ model MfaDevice {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, tenantId, type]) // One device per type per user per tenant
   @@map("mfa_devices")
   @@index([userId, type])
   @@index([tenantId, userId])

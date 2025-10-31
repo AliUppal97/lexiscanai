@@ -5,8 +5,14 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController, UserManagementController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UserManagementService } from './user-management.service';
+import { SecurityService } from './security.service';
+import { SessionService } from './session.service';
+import { MfaService } from './mfa.service';
+import { ApiKeyService } from './api-key.service';
 import { JwtAuthGuard, PermissionsGuard, RolesGuard } from './auth.guard';
+import { EnhancedJwtAuthGuard, ApiKeyAuthGuard, OptionalAuthGuard } from './enhanced-auth.guard';
 import { PrismaService } from '../../common/prisma.service';
+import { CacheService } from '../../services/cache.service';
 
 @Module({
   imports: [
@@ -16,7 +22,7 @@ import { PrismaService } from '../../common/prisma.service';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
+          expiresIn: configService.get<string>('JWT_ACCESS_EXPIRES_IN', '15m'),
         },
       }),
       inject: [ConfigService],
@@ -24,14 +30,44 @@ import { PrismaService } from '../../common/prisma.service';
   ],
   controllers: [AuthController, UserManagementController],
   providers: [
+    // Services
     AuthService,
     UserManagementService,
+    SecurityService,
+    SessionService,
+    MfaService,
+    ApiKeyService,
+    
+    // Guards (backward compatibility)
     JwtAuthGuard,
     PermissionsGuard,
     RolesGuard,
+    
+    // Enhanced Guards
+    EnhancedJwtAuthGuard,
+    ApiKeyAuthGuard,
+    OptionalAuthGuard,
+    
+    // Infrastructure
     PrismaService,
+    CacheService,
   ],
-  exports: [AuthService, UserManagementService, JwtAuthGuard, PermissionsGuard, RolesGuard],
+  exports: [
+    // Services
+    AuthService,
+    UserManagementService,
+    SecurityService,
+    SessionService,
+    MfaService,
+    ApiKeyService,
+    
+    // Guards
+    JwtAuthGuard,
+    PermissionsGuard,
+    RolesGuard,
+    EnhancedJwtAuthGuard,
+    ApiKeyAuthGuard,
+    OptionalAuthGuard,
+  ],
 })
 export class AuthModule {}
-
