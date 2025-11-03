@@ -299,42 +299,44 @@ export function Hero() {
 
             {/* Testimonial Carousel */}
             <div className="mt-8">
-              <div className="relative">
-                <div className="overflow-hidden">
-                  <div 
-                    className="flex transition-transform duration-500 ease-in-out"
-                    style={{ transform: `translateX(-${currentTestimonial * 100}%)` }}
-                  >
-                    {testimonials.map((testimonial, index) => (
-                      <div key={index} className="w-full flex-shrink-0">
-                        <div className="rounded-xl bg-white/95 backdrop-blur-sm p-6 shadow-[0_8px_24px_rgba(0,0,0,0.12)] border border-gray-100 transition-all duration-300 hover:shadow-[0_12px_32px_rgba(0,0,0,0.16)]">
-                          <div className="flex items-center gap-1 mb-4">
-                            {[...Array(testimonial.rating)].map((_, i) => (
-                              <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400 drop-shadow-sm" />
-                            ))}
-                          </div>
-                          <p className="text-gray-700 mb-4 text-base leading-relaxed italic">"{testimonial.content}"</p>
-                          <div>
-                            <p className="font-semibold text-gray-900">{testimonial.name}</p>
-                            <p className="text-sm text-gray-600">{testimonial.role}, {testimonial.company}</p>
+              <div className="rounded-2xl bg-white shadow-[0_20px_60px_rgba(0,0,0,0.12)] border border-gray-200/80 w-full backdrop-blur-sm overflow-hidden">
+                <div className="relative">
+                  <div className="overflow-hidden">
+                    <div 
+                      className="flex transition-transform duration-500 ease-in-out"
+                      style={{ transform: `translateX(-${currentTestimonial * 100}%)` }}
+                    >
+                      {testimonials.map((testimonial, index) => (
+                        <div key={index} className="w-full flex-shrink-0">
+                          <div className="p-6">
+                            <div className="flex items-center gap-1 mb-4">
+                              {[...Array(testimonial.rating)].map((_, i) => (
+                                <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400 drop-shadow-sm" />
+                              ))}
+                            </div>
+                            <p className="text-gray-700 mb-4 text-base leading-relaxed italic">"{testimonial.content}"</p>
+                            <div>
+                              <p className="font-semibold text-gray-900">{testimonial.name}</p>
+                              <p className="text-sm text-gray-600">{testimonial.role}, {testimonial.company}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-center pb-6 pt-2 gap-2">
+                    {testimonials.map((_, index) => (
+                      <button
+                        key={index}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full transition-all duration-300",
+                          index === currentTestimonial ? "bg-blue-600 w-8 shadow-md" : "bg-gray-300 hover:bg-gray-400"
+                        )}
+                        onClick={() => setCurrentTestimonial(index)}
+                        aria-label={`View testimonial ${index + 1}`}
+                      />
                     ))}
                   </div>
-                </div>
-                <div className="flex justify-center mt-5 gap-2">
-                  {testimonials.map((_, index) => (
-                    <button
-                      key={index}
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full transition-all duration-300",
-                        index === currentTestimonial ? "bg-blue-600 w-8 shadow-md" : "bg-gray-300 hover:bg-gray-400"
-                      )}
-                      onClick={() => setCurrentTestimonial(index)}
-                      aria-label={`View testimonial ${index + 1}`}
-                    />
-                  ))}
                 </div>
               </div>
             </div>
