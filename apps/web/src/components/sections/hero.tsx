@@ -52,12 +52,12 @@ export function Hero() {
   }, [])
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 pb-32 sm:pb-40 lg:pb-48">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
       
-      <div className="mx-auto max-w-7xl px-6 pb-24 pt-10 sm:pb-32 lg:flex lg:px-8 lg:py-40">
-        <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-xl lg:pt-8 lg:pr-4">
+      <div className="mx-auto max-w-7xl px-6 pt-12 sm:pt-16 lg:flex lg:px-8 lg:pt-20">
+        <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-xl lg:pr-4">
           {/* Badge */}
           <div className="mb-8">
             <Badge variant="secondary" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium">
