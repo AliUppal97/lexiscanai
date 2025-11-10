@@ -10,6 +10,7 @@ LexiScan AI ingests PDFs and office documents, analyzes them with AI, and provid
 ## Contents
 - Getting Started: Quick Start, Local Setup, Onboarding
 - Architecture: System overview, security model
+- **Authentication & Database**: [Complete authentication flow and database structure with design decisions](./AUTHENTICATION_AND_DATABASE_FLOW.md)
 - API: OpenAPI reference, auth, rate-limiting, webhooks
 - Development: Coding standards, commands, tests
 - Deployment: AWS, Kubernetes, infrastructure
