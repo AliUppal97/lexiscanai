@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Logo } from "@/components/ui/logo"
 import { NotificationCenter } from "@/components/dashboard/NotificationCenter"
 import { useNotifications } from "@/hooks/useNotifications"
 import { 
@@ -21,7 +20,8 @@ import {
   Brain,
   Upload,
   History,
-  ChevronDown
+  ChevronDown,
+  PanelLeftClose
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -99,6 +105,20 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  
+  // Load sidebar state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem("sidebarCollapsed")
+    if (savedState !== null) {
+      setSidebarCollapsed(JSON.parse(savedState))
+    }
+  }, [])
+  
+  // Save sidebar state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", JSON.stringify(sidebarCollapsed))
+  }, [sidebarCollapsed])
   
   // Initialize notifications hook
   const {
@@ -116,6 +136,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     refreshInterval: 30000,
     limit: 50
   })
+  
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed)
+  }
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -140,14 +164,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
 
       {/* Desktop sidebar */}
-      <div className="hidden md:flex md:flex-shrink-0">
-        <div className="flex flex-col w-64">
-          <SidebarContent />
+      <div className={cn(
+        "hidden md:flex md:flex-shrink-0 transition-all duration-300 ease-in-out relative will-change-[width] overflow-hidden",
+        sidebarCollapsed ? "w-16" : "w-64"
+      )}>
+        <div className="flex flex-col w-full relative min-w-0">
+          <SidebarContent collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
         </div>
       </div>
 
       {/* Main content */}
-      <div className="flex flex-col w-0 flex-1 overflow-hidden">
+      <div className="flex flex-col w-0 flex-1 overflow-hidden transition-all duration-300 ease-in-out">
         {/* Top navigation */}
         <div className="relative z-10 flex-shrink-0 flex h-16 bg-white shadow">
           <button
@@ -255,85 +282,277 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   )
 }
 
-function SidebarContent() {
+interface SidebarContentProps {
+  collapsed?: boolean
+  onToggle?: () => void
+}
+
+function SidebarContent({ collapsed = false, onToggle }: SidebarContentProps) {
   const pathname = usePathname()
 
   return (
-    <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
-      {/* Logo */}
-      <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-        <div className="flex items-center flex-shrink-0 px-4">
-          <Logo href="/dashboard" variant="dashboard" />
-        </div>
+    <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white overflow-hidden">
+        {/* Logo */}
+        <div className="flex-1 flex flex-col pt-6 pb-4 overflow-y-auto overflow-x-hidden">
+          <div className="px-2 py-2">
+            <Link 
+              href="/dashboard" 
+              className="group relative w-full flex items-center px-2 py-2 rounded-lg transition-all duration-300 ease-in-out overflow-hidden active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            >
+              {/* Background gradient overlay on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/3 group-hover:to-blue-500/8 transition-all duration-300 rounded-lg" />
+              
+              {/* Content */}
+              <div className="relative flex items-center z-10 w-full">
+                <div className="h-8 w-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-none mr-3" style={{ minWidth: '2rem', minHeight: '2rem' }}>
+                  <FileText className="h-5 w-5 text-white transition-none" style={{ minWidth: '1.25rem', minHeight: '1.25rem' }} />
+                </div>
+                <span className={cn(
+                  "text-base font-bold text-gray-900 tracking-tight transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
+                  collapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-full"
+                )}>
+                  LexiScan AI
+                </span>
+              </div>
+              
+              {/* Subtle shine effect on hover */}
+              <div className="absolute inset-0 rounded-lg overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer transition-opacity duration-300" />
+              </div>
+            </Link>
+          </div>
         
         {/* Organization info */}
-        <div className="mt-6 px-4">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="h-10 w-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-medium text-gray-600">AC</span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-900 truncate">Acme Corp</p>
-              <p className="text-xs text-gray-500 truncate">acme-corp.lexiscan.ai</p>
-            </div>
-          </div>
+        <div className="px-2 py-2 mt-8 transition-all duration-300">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="group relative w-full flex items-center px-2 py-2 rounded-lg transition-all duration-300 ease-in-out overflow-hidden active:scale-[0.97] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+                  {/* Background gradient overlay on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/3 group-hover:to-blue-500/8 transition-all duration-300 rounded-lg" />
+                  
+                  {/* Content */}
+                  <div className="relative flex items-center z-10 w-full">
+                    <div 
+                      className="h-10 w-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 border border-gray-200/50 shadow-sm transition-none mr-3" 
+                      style={{ 
+                        minWidth: '2.5rem', 
+                        minHeight: '2.5rem'
+                      }}
+                    >
+                      <span className="text-sm font-bold text-gray-700 tracking-tight">AC</span>
+                    </div>
+                    <div className={cn(
+                      "min-w-0 flex-1 transition-all duration-300 ease-in-out overflow-hidden",
+                      collapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-full"
+                    )}>
+                      <p className="text-sm font-semibold text-gray-900 truncate whitespace-nowrap leading-5">Acme Corp</p>
+                      <p className="text-xs text-gray-500 truncate whitespace-nowrap leading-4 mt-0.5">acme-corp.lexiscan.ai</p>
+                    </div>
+                  </div>
+                  
+                  {/* Subtle shine effect on hover */}
+                  <div className="absolute inset-0 rounded-lg overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer transition-opacity duration-300" />
+                  </div>
+                </div>
+              </TooltipTrigger>
+              {collapsed && (
+                <TooltipContent side="right" className="ml-2">
+                  <div>
+                    <p className="font-semibold">Acme Corp</p>
+                    <p className="text-xs text-gray-500 mt-0.5">acme-corp.lexiscan.ai</p>
+                  </div>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {/* Navigation */}
-        <nav className="mt-8 flex-1 px-2 space-y-1">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-blue-100 text-blue-900"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "mr-3 flex-shrink-0 h-5 w-5",
-                    isActive ? "text-blue-500" : "text-gray-400 group-hover:text-gray-500"
-                  )}
-                />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* Secondary navigation */}
-        <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-          <nav className="flex-1 space-y-1">
-            {secondaryNavigation.map((item) => {
+        <div className="flex-1 px-2 py-4 transition-all duration-300">
+          <nav className="space-y-1">
+          <TooltipProvider delayDuration={300}>
+            {navigation.map((item) => {
               const isActive = pathname === item.href
-              return (
+              const linkContent = (
                 <Link
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
+                    "group relative w-full flex items-center px-2 py-2 rounded-lg transition-all duration-300 ease-in-out overflow-hidden",
                     isActive
                       ? "bg-blue-100 text-blue-900"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      : "active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   )}
                 >
-                  <item.icon
-                    className={cn(
-                      "mr-3 flex-shrink-0 h-5 w-5",
-                      isActive ? "text-blue-500" : "text-gray-400 group-hover:text-gray-500"
-                    )}
-                  />
-                  {item.name}
+                  {/* Background gradient overlay on hover */}
+                  {!isActive && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/3 group-hover:to-blue-500/8 transition-all duration-300 rounded-lg" />
+                  )}
+                  
+                  {/* Content */}
+                  <div className="relative flex items-center z-10 w-full">
+                    <item.icon
+                      className={cn(
+                        "flex-shrink-0 h-5 w-5 mr-3 transition-colors duration-200",
+                        isActive 
+                          ? "text-blue-500" 
+                          : "text-gray-400 group-hover:text-blue-600"
+                      )}
+                      style={{ minWidth: '1.25rem', minHeight: '1.25rem' }}
+                    />
+                    <span className={cn(
+                      "text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
+                      isActive
+                        ? "text-blue-900"
+                        : "text-gray-600 group-hover:text-blue-600",
+                      collapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-full"
+                    )}>{item.name}</span>
+                  </div>
+                  
+                  {/* Subtle shine effect on hover */}
+                  {!isActive && (
+                    <div className="absolute inset-0 rounded-lg overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer transition-opacity duration-300" />
+                    </div>
+                  )}
                 </Link>
               )
+              
+              if (collapsed) {
+                return (
+                  <Tooltip key={item.name}>
+                    <TooltipTrigger asChild>
+                      {linkContent}
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="ml-2">
+                      <p>{item.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              }
+              
+              return linkContent
             })}
+          </TooltipProvider>
           </nav>
         </div>
+
+        {/* Secondary navigation */}
+        <div className="flex-shrink-0 flex border-t border-gray-200 px-2 py-4 transition-all duration-300">
+          <nav className="flex-1 space-y-1 w-full">
+            <TooltipProvider delayDuration={300}>
+              {secondaryNavigation.map((item) => {
+                const isActive = pathname === item.href
+                const linkContent = (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      "group relative w-full flex items-center px-2 py-2 rounded-lg transition-all duration-300 ease-in-out overflow-hidden",
+                      isActive
+                        ? "bg-blue-100 text-blue-900"
+                        : "active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    )}
+                  >
+                    {/* Background gradient overlay on hover */}
+                    {!isActive && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/3 group-hover:to-blue-500/8 transition-all duration-300 rounded-lg" />
+                    )}
+                    
+                    {/* Content */}
+                    <div className="relative flex items-center z-10 w-full">
+                      <item.icon
+                        className={cn(
+                          "flex-shrink-0 h-5 w-5 mr-3 transition-colors duration-200",
+                          isActive 
+                            ? "text-blue-500" 
+                            : "text-gray-400 group-hover:text-blue-600"
+                        )}
+                        style={{ minWidth: '1.25rem', minHeight: '1.25rem' }}
+                      />
+                      <span className={cn(
+                        "text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
+                        isActive
+                          ? "text-blue-900"
+                          : "text-gray-600 group-hover:text-blue-600",
+                        collapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-full"
+                      )}>{item.name}</span>
+                    </div>
+                    
+                    {/* Subtle shine effect on hover */}
+                    {!isActive && (
+                      <div className="absolute inset-0 rounded-lg overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer transition-opacity duration-300" />
+                      </div>
+                    )}
+                  </Link>
+                )
+                
+                if (collapsed) {
+                  return (
+                    <Tooltip key={item.name}>
+                      <TooltipTrigger asChild>
+                        {linkContent}
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="ml-2">
+                        <p>{item.name}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )
+                }
+                
+                return linkContent
+              })}
+            </TooltipProvider>
+          </nav>
+        </div>
+
+        {/* Premium Toggle Button */}
+        {onToggle && (
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-2 py-4 transition-all duration-300">
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onToggle}
+                    className="group relative w-full flex items-center px-2 py-2 rounded-lg transition-all duration-300 ease-in-out overflow-hidden bg-gradient-to-br from-gray-50 via-gray-50/80 to-gray-100/60 border border-gray-200/80 shadow-sm hover:from-blue-50 hover:via-blue-50/90 hover:to-blue-100/70 hover:border-blue-300/80 hover:shadow-md hover:shadow-blue-500/5 active:scale-[0.97] active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  >
+                    {/* Background gradient overlay on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/3 group-hover:to-blue-500/8 transition-all duration-300 rounded-lg" />
+                    
+                    {/* Content */}
+                    <div className="relative flex items-center z-10 w-full">
+                      <PanelLeftClose className={cn(
+                        "flex-shrink-0 h-5 w-5 mr-3 text-gray-400 group-hover:text-blue-600 transition-colors duration-200",
+                        collapsed && "rotate-180"
+                      )} 
+                      style={{ minWidth: '1.25rem', minHeight: '1.25rem' }}
+                      />
+                      <span className={cn(
+                        "text-sm font-medium text-gray-600 group-hover:text-blue-600 transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-full"
+                      )}>Collapse</span>
+                    </div>
+                    
+                    {/* Subtle shine effect on hover */}
+                    <div className="absolute inset-0 rounded-lg overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer transition-opacity duration-300" />
+                    </div>
+                  </button>
+                </TooltipTrigger>
+                {collapsed && (
+                  <TooltipContent side="right" className="ml-2">
+                    <p>Expand sidebar</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
       </div>
     </div>
   )
