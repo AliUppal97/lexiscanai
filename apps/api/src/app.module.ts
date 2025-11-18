@@ -8,7 +8,6 @@ import { UsersModule } from './modules/users/users.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { BillingModule } from './modules/billing/billing.module';
-import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -35,7 +34,6 @@ import { CommonModule } from './common/common.module';
     DocumentsModule,
     ReviewsModule,
     BillingModule,
-    CommonModule,
   ],
 })
 export class AppModule {}
