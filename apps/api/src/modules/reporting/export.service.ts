@@ -513,16 +513,16 @@ export class ExportService {
       ]);
 
       return {
-        exports: exports.map(export => ({
-          id: export.id,
-          exportType: export.exportType,
-          format: export.format,
-          fileName: export.fileName,
-          fileSize: export.fileSize,
-          recordCount: export.recordCount,
-          status: export.status,
-          exportedAt: export.exportedAt,
-          expiresAt: export.expiresAt,
+        exports: exports.map(exportItem => ({
+          id: exportItem.id,
+          exportType: exportItem.exportType,
+          format: exportItem.format,
+          fileName: exportItem.fileName,
+          fileSize: exportItem.fileSize,
+          recordCount: exportItem.recordCount,
+          status: exportItem.status,
+          exportedAt: exportItem.exportedAt,
+          expiresAt: exportItem.expiresAt,
         })),
         total,
         page,
