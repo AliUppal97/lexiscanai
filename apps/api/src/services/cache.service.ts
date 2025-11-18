@@ -143,6 +143,13 @@ export class CacheService implements OnModuleDestroy {
   }
 
   /**
+   * Delete a key from cache (alias for delete)
+   */
+  async del(key: string): Promise<boolean> {
+    return this.delete(key);
+  }
+
+  /**
    * Delete multiple keys from cache
    */
   async deleteMany(keys: string[]): Promise<number> {
