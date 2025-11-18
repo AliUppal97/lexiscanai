@@ -70,14 +70,14 @@ import { plainToInstance } from 'class-transformer';
 export class ValidationPipe implements PipeTransform<any> {
   private readonly whitelist: boolean;
   private readonly forbidNonWhitelisted: boolean;
-  private readonly transform: boolean;
+  private readonly shouldTransform: boolean;
   private readonly skipMissingProperties: boolean;
   private readonly enableImplicitConversion: boolean;
 
   constructor(options?: ValidationPipeOptions) {
     this.whitelist = options?.whitelist ?? true;
     this.forbidNonWhitelisted = options?.forbidNonWhitelisted ?? false;
-    this.transform = options?.transform ?? true;
+    this.shouldTransform = options?.transform ?? true;
     this.skipMissingProperties = options?.skipMissingProperties ?? false;
     this.enableImplicitConversion = options?.enableImplicitConversion ?? true;
   }
@@ -107,7 +107,7 @@ export class ValidationPipe implements PipeTransform<any> {
       throw new BadRequestException(this.formatErrors(errors));
     }
 
-    return this.transform ? object : value;
+    return this.shouldTransform ? object : value;
   }
 
   /**
