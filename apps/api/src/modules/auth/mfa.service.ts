@@ -162,6 +162,24 @@ export class MfaService {
       }
     }
 
+    // Try FIDO2/WebAuthn
+    if (!type || type === 'FIDO2') {
+      const fido2Device = await this.prisma.mfaDevice.findFirst({
+        where: {
+          userId,
+          tenantId,
+          type: 'FIDO2',
+          isActive: true,
+        },
+      });
+
+      if (fido2Device) {
+        // FIDO2 verification would be handled by WebAuthnService
+        // This is a placeholder - actual verification happens in webauthn.service.ts
+        // For now, we'll skip it here as it requires the full WebAuthn flow
+      }
+    }
+
     // Try backup codes
     if (!type || type === 'BACKUP') {
       const isValid = await this.verifyBackupCode(userId, tenantId, code);
@@ -405,9 +423,19 @@ export class MfaService {
     totpEnabled: boolean;
     smsEnabled: boolean;
     emailEnabled: boolean;
+    fido2Enabled: boolean;
     backupCodesRemaining: number;
   }> {
     const devices = await this.prisma.mfaDevice.findMany({
+      where: {
+        userId,
+        tenantId,
+        isActive: true,
+      },
+    });
+
+    // Check for WebAuthn credentials
+    const webauthnCredentials = await this.prisma.webauthnCredential.findMany({
       where: {
         userId,
         tenantId,
@@ -419,6 +447,7 @@ export class MfaService {
       totpEnabled: devices.some((d) => d.type === 'TOTP'),
       smsEnabled: devices.some((d) => d.type === 'SMS'),
       emailEnabled: devices.some((d) => d.type === 'EMAIL'),
+      fido2Enabled: devices.some((d) => d.type === 'FIDO2') || webauthnCredentials.length > 0,
       backupCodesRemaining: devices.filter((d) => d.type === 'BACKUP').length,
     };
   }

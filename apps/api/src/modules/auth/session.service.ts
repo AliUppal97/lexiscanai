@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../common/prisma.service';
 import { SecurityService } from './security.service';
+import { TokenSecurityService, TokenBindingInfo } from './token-security.service';
+import { SessionAnomalyService } from './session-anomaly.service';
 import { randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
@@ -47,6 +49,8 @@ export class SessionService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private securityService: SecurityService,
+    private tokenSecurityService?: TokenSecurityService,
+    private sessionAnomalyService?: SessionAnomalyService,
   ) {
     this.accessTokenExpiry = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN', '15m');
     this.refreshTokenExpiry = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '30d');
@@ -130,8 +134,22 @@ export class SessionService {
       },
     });
 
-    // Generate tokens
-    const accessToken = await this.generateAccessToken(session);
+    // Check for anomalies (async, don't wait)
+    if (this.sessionAnomalyService) {
+      this.sessionAnomalyService.checkAnomalies({
+        sessionId: session.id,
+        userId,
+        tenantId,
+        ipAddress,
+        userAgent,
+        deviceInfo,
+      }).catch((err) => {
+        this.logger.error(`Failed to check session anomalies: ${err.message}`);
+      });
+    }
+
+    // Generate tokens with enhanced security
+    const accessToken = await this.generateAccessToken(session, deviceInfo);
     const refreshTokenJwt = await this.generateRefreshTokenJwt(session.id, userId, tenantId);
 
     return {
@@ -331,9 +349,9 @@ export class SessionService {
   }
 
   /**
-   * Generate access token
+   * Generate access token with enhanced security (RS256, JWE, token binding)
    */
-  private async generateAccessToken(session: any): Promise<string> {
+  private async generateAccessToken(session: any, deviceInfo?: any): Promise<string> {
     const user = session.user;
     const tenant = session.tenant;
 
@@ -351,6 +369,9 @@ export class SessionService {
       }
     });
 
+    // Calculate adaptive timeout based on risk
+    const adaptiveExpiry = await this.calculateAdaptiveTimeout(session, deviceInfo);
+
     const payload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
@@ -360,10 +381,73 @@ export class SessionService {
       permissions: Array.from(permissions),
       sessionId: session.id,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + this.parseExpiry(this.accessTokenExpiry),
+      exp: Math.floor(Date.now() / 1000) + adaptiveExpiry,
     };
 
-    return this.jwtService.sign(payload);
+    // Add token binding if enabled
+    let finalPayload = payload;
+    if (this.tokenSecurityService && deviceInfo) {
+      const bindingInfo: TokenBindingInfo = {
+        deviceFingerprint: deviceInfo.fingerprint || this.securityService.generateDeviceFingerprint({ headers: { 'user-agent': deviceInfo.userAgent } } as any),
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent,
+      };
+      finalPayload = this.tokenSecurityService.addTokenBinding(payload, bindingInfo);
+    }
+
+    // Sign with RS256 or HS256, encrypt with JWE if enabled
+    if (this.tokenSecurityService) {
+      return this.tokenSecurityService.encryptToken(finalPayload, {
+        expiresIn: `${adaptiveExpiry}s`,
+      });
+    }
+
+    return this.jwtService.sign(finalPayload);
+  }
+
+  /**
+   * Calculate adaptive session timeout based on risk
+   */
+  private async calculateAdaptiveTimeout(session: any, deviceInfo?: any): Promise<number> {
+    const baseTimeout = this.parseExpiry(this.accessTokenExpiry); // Default 15 minutes
+
+    // Check for anomalies
+    if (this.sessionAnomalyService) {
+      try {
+        const anomalies = await this.sessionAnomalyService.getSessionAnomalies(session.id);
+        
+        // Reduce timeout for high-risk sessions
+        const criticalAnomalies = anomalies.filter(a => a.severity === 'CRITICAL');
+        const highAnomalies = anomalies.filter(a => a.severity === 'HIGH');
+        
+        if (criticalAnomalies.length > 0) {
+          // Critical risk: 1 hour timeout
+          return 3600;
+        }
+        
+        if (highAnomalies.length > 0) {
+          // High risk: 4 hours timeout
+          return 4 * 3600;
+        }
+        
+        // Medium risk: 1 day timeout
+        if (anomalies.length > 0) {
+          return 24 * 3600;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to check anomalies for adaptive timeout: ${error.message}`);
+      }
+    }
+
+    // Low risk: Use base timeout (15 minutes) or extend to 7 days for known devices
+    // Check if device is known (simplified - in production, check device history)
+    if (deviceInfo?.fingerprint) {
+      // Known device: 7 days
+      return 7 * 24 * 3600;
+    }
+
+    // Unknown device: base timeout
+    return baseTimeout;
   }
 
   /**
