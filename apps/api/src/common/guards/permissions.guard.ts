@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionsService } from '../../modules/roles/permissions.service';
+import { EnhancedPermissionsService } from '../../modules/auth/enhanced-permissions.service';
 
 /**
  * PermissionsGuard - Enforces granular permission-based access control
@@ -33,6 +34,7 @@ export class PermissionsGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private permissionsService: PermissionsService,
+    private enhancedPermissionsService?: EnhancedPermissionsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -61,13 +63,33 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Tenant context not found');
     }
 
-    // Check each required permission
+    // Check each required permission (use enhanced service if available)
     for (const permission of requiredPermissions) {
-      const hasPermission = await this.permissionsService.checkPermission(
-        user.userId,
-        tenantId,
-        permission,
-      );
+      let hasPermission: boolean;
+      
+      if (this.enhancedPermissionsService) {
+        // Use enhanced permissions with hierarchical and conditional support
+        hasPermission = await this.enhancedPermissionsService.checkPermission(
+          user.userId || user.id,
+          tenantId,
+          permission,
+          {
+            resource: request.resource,
+            action: permission.split('.')[1] || 'read',
+            environment: {
+              ipAddress: request.clientIp,
+              userAgent: request.headers['user-agent'],
+            },
+          },
+        );
+      } else {
+        // Fallback to basic permissions service
+        hasPermission = await this.permissionsService.checkPermission(
+          user.userId || user.id,
+          tenantId,
+          permission,
+        );
+      }
 
       if (hasPermission) {
         return true; // User has at least one required permission

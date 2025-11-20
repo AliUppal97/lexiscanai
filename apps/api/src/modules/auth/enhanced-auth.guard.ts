@@ -12,6 +12,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { CacheService } from '../../services/cache.service';
 import { SecurityService } from './security.service';
 import { SessionService } from './session.service';
+import { TokenSecurityService, TokenBindingInfo } from './token-security.service';
 import { Reflector } from '@nestjs/core';
 
 /**
@@ -45,6 +46,7 @@ export class EnhancedJwtAuthGuard implements CanActivate {
     private securityService: SecurityService,
     private sessionService: SessionService,
     private reflector: Reflector,
+    private tokenSecurityService?: TokenSecurityService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -65,10 +67,31 @@ export class EnhancedJwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('Token has been revoked');
       }
 
-      // Verify token signature and expiration
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-      });
+      // Verify token signature and expiration (with RS256/JWE support)
+      let payload: any;
+      if (this.tokenSecurityService) {
+        payload = await this.tokenSecurityService.decryptToken(token);
+      } else {
+        payload = await this.jwtService.verifyAsync(token, {
+          secret: this.configService.get<string>('JWT_SECRET'),
+        });
+      }
+
+      // Verify token binding if enabled
+      if (this.tokenSecurityService && payload.binding) {
+        const deviceFingerprint = this.securityService.generateDeviceFingerprint(request);
+        const clientIp = this.securityService.getClientIp(request);
+        const bindingInfo: TokenBindingInfo = {
+          deviceFingerprint,
+          ipAddress: clientIp,
+          userAgent: request.headers['user-agent'],
+        };
+        
+        const bindingValid = this.tokenSecurityService.verifyTokenBinding(payload, bindingInfo);
+        if (!bindingValid) {
+          throw new UnauthorizedException('Token binding verification failed');
+        }
+      }
 
       // Verify session is still valid
       if (payload.sessionId) {
