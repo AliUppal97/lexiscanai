@@ -19,8 +19,13 @@ import { SecurityService } from './security.service';
 import { SessionService } from './session.service';
 import { MfaService } from './mfa.service';
 import { SsoService, CreateSsoProviderDto } from './sso.service';
+import { SamlService } from './saml.service';
+import { PasswordlessService } from './passwordless.service';
+import { WebAuthnService } from './webauthn.service';
+import { AbacService } from './abac.service';
+import { SessionAnomalyService } from './session-anomaly.service';
 import { EnhancedJwtAuthGuard } from './enhanced-auth.guard';
-import { IsEmail, IsString, MinLength, IsOptional, IsArray } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsArray, IsObject } from 'class-validator';
 
 // DTOs
 export class LoginDto {
@@ -196,6 +201,11 @@ export class AuthController {
     private mfaService: MfaService,
     private securityService: SecurityService,
     private ssoService: SsoService,
+    private samlService: SamlService,
+    private passwordlessService: PasswordlessService,
+    private webauthnService: WebAuthnService,
+    private abacService: AbacService,
+    private sessionAnomalyService: SessionAnomalyService,
   ) {}
 
   @Post('register')
@@ -582,6 +592,249 @@ export class AuthController {
   async disableSsoProvider(@Param('provider') provider: string, @Request() req) {
     await this.ssoService.disableSsoProvider(req.tenantId, provider as any);
     return { message: 'SSO provider disabled successfully' };
+  }
+
+  // ============================================================================
+  // SAML 2.0 Endpoints
+  // ============================================================================
+
+  @Post('saml/configure')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Configure SAML 2.0 provider' })
+  @ApiResponse({ status: 200, description: 'SAML provider configured' })
+  async configureSaml(@Body() body: any, @Request() req) {
+    await this.samlService.createSamlProvider(req.tenantId, body.name, body.config);
+    return { message: 'SAML provider configured successfully' };
+  }
+
+  @Get('saml/authorize')
+  @ApiOperation({ summary: 'Get SAML AuthnRequest URL (SP-initiated SSO)' })
+  @ApiResponse({ status: 200, description: 'SAML AuthnRequest URL generated' })
+  @ApiQuery({ name: 'tenantId', required: true })
+  @ApiQuery({ name: 'relayState', required: false })
+  async getSamlAuthnRequest(
+    @Query('tenantId') tenantId: string,
+    @Query('relayState') relayState?: string,
+  ) {
+    const result = await this.samlService.generateAuthnRequest({ tenantId, relayState });
+    return {
+      url: result.url,
+      relayState: result.relayState,
+    };
+  }
+
+  @Post('saml/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle SAML Response (ACS callback)' })
+  @ApiResponse({ status: 200, description: 'SAML authentication successful' })
+  @ApiResponse({ status: 401, description: 'SAML authentication failed' })
+  async samlCallback(@Body() body: { SAMLResponse: string; RelayState?: string }, @Request() req) {
+    return this.samlService.handleSamlResponse(
+      {
+        SAMLResponse: body.SAMLResponse,
+        RelayState: body.RelayState,
+      },
+      req,
+    );
+  }
+
+  // ============================================================================
+  // Passwordless Authentication (Magic Links)
+  // ============================================================================
+
+  @Post('passwordless/send-link')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send magic link for passwordless authentication' })
+  @ApiResponse({ status: 200, description: 'Magic link sent (if user exists)' })
+  async sendMagicLink(@Body() body: { email: string; tenantSlug?: string; redirectUrl?: string }, @Request() req) {
+    await this.passwordlessService.sendMagicLink(
+      {
+        email: body.email,
+        tenantSlug: body.tenantSlug,
+        redirectUrl: body.redirectUrl,
+      },
+      req,
+    );
+    return { message: 'If the email exists, a magic link has been sent' };
+  }
+
+  @Get('passwordless/verify')
+  @ApiOperation({ summary: 'Verify magic link token' })
+  @ApiResponse({ status: 200, description: 'Magic link verified, session created' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired token' })
+  @ApiQuery({ name: 'token', required: true })
+  @ApiQuery({ name: 'tenantSlug', required: false })
+  async verifyMagicLink(
+    @Query('token') token: string,
+    @Query('tenantSlug') tenantSlug?: string,
+    @Request() req?: any,
+  ) {
+    return this.passwordlessService.verifyMagicLink({ token, tenantSlug }, req);
+  }
+
+  // ============================================================================
+  // WebAuthn/FIDO2 Endpoints
+  // ============================================================================
+
+  @Post('webauthn/registration/start')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start WebAuthn registration (generate challenge)' })
+  @ApiResponse({ status: 200, description: 'Registration challenge generated' })
+  async startWebAuthnRegistration(@Body() body: { deviceName: string }, @Request() req) {
+    return this.webauthnService.startRegistration({
+      userId: req.userId,
+      tenantId: req.tenantId,
+      deviceName: body.deviceName,
+    });
+  }
+
+  @Post('webauthn/registration/complete')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete WebAuthn registration (verify and store credential)' })
+  @ApiResponse({ status: 200, description: 'Credential registered successfully' })
+  async completeWebAuthnRegistration(@Body() body: { deviceName: string; credential: any }, @Request() req) {
+    return this.webauthnService.completeRegistration(
+      {
+        userId: req.userId,
+        tenantId: req.tenantId,
+        credential: body.credential,
+      },
+      req,
+    );
+  }
+
+  @Post('webauthn/authentication/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start WebAuthn authentication (generate challenge)' })
+  @ApiResponse({ status: 200, description: 'Authentication challenge generated' })
+  async startWebAuthnAuthentication(@Body() body: { email: string; tenantSlug?: string }) {
+    return this.webauthnService.startAuthentication({
+      email: body.email,
+      tenantSlug: body.tenantSlug,
+    });
+  }
+
+  @Post('webauthn/authentication/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete WebAuthn authentication (verify and create session)' })
+  @ApiResponse({ status: 200, description: 'Authentication successful, session created' })
+  async completeWebAuthnAuthentication(@Body() body: { email: string; tenantSlug?: string; credential: any }, @Request() req) {
+    return this.webauthnService.completeAuthentication(
+      {
+        email: body.email,
+        tenantSlug: body.tenantSlug,
+        credential: body.credential,
+      },
+      req,
+    );
+  }
+
+  @Get('webauthn/credentials')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List user WebAuthn credentials' })
+  @ApiResponse({ status: 200, description: 'Credentials retrieved successfully' })
+  async listWebAuthnCredentials(@Request() req) {
+    return this.webauthnService.listCredentials(req.userId, req.tenantId);
+  }
+
+  @Delete('webauthn/credentials/:credentialId')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete WebAuthn credential' })
+  @ApiResponse({ status: 200, description: 'Credential deleted successfully' })
+  async deleteWebAuthnCredential(@Param('credentialId') credentialId: string, @Request() req) {
+    await this.webauthnService.deleteCredential(req.userId, req.tenantId, credentialId);
+    return { message: 'Credential deleted successfully' };
+  }
+
+  // ============================================================================
+  // ABAC (Attribute-Based Access Control) Endpoints
+  // ============================================================================
+
+  @Post('abac/policies')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create ABAC policy' })
+  @ApiResponse({ status: 201, description: 'Policy created successfully' })
+  async createAbacPolicy(@Body() body: any, @Request() req) {
+    return this.abacService.createPolicy(
+      req.tenantId,
+      body.name,
+      body.resource,
+      body.action,
+      body.conditions,
+      body.description,
+      body.priority,
+    );
+  }
+
+  @Get('abac/policies')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List ABAC policies' })
+  @ApiResponse({ status: 200, description: 'Policies retrieved successfully' })
+  @ApiQuery({ name: 'resource', required: false })
+  @ApiQuery({ name: 'action', required: false })
+  async listAbacPolicies(
+    @Query('resource') resource?: string,
+    @Query('action') action?: string,
+    @Request() req?: any,
+  ) {
+    return this.abacService.listPolicies(req.tenantId, resource, action);
+  }
+
+  @Put('abac/policies/:policyId')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update ABAC policy' })
+  @ApiResponse({ status: 200, description: 'Policy updated successfully' })
+  async updateAbacPolicy(@Param('policyId') policyId: string, @Body() body: any, @Request() req) {
+    return this.abacService.updatePolicy(policyId, req.tenantId, body);
+  }
+
+  @Delete('abac/policies/:policyId')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete ABAC policy' })
+  @ApiResponse({ status: 200, description: 'Policy deleted successfully' })
+  async deleteAbacPolicy(@Param('policyId') policyId: string, @Request() req) {
+    await this.abacService.deletePolicy(policyId, req.tenantId);
+    return { message: 'Policy deleted successfully' };
+  }
+
+  // ============================================================================
+  // Session Anomaly Detection Endpoints
+  // ============================================================================
+
+  @Get('sessions/:sessionId/anomalies')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get session anomalies' })
+  @ApiResponse({ status: 200, description: 'Anomalies retrieved successfully' })
+  async getSessionAnomalies(@Param('sessionId') sessionId: string, @Request() req) {
+    return this.sessionAnomalyService.getSessionAnomalies(sessionId);
+  }
+
+  @Put('sessions/:sessionId/anomalies/:anomalyId/resolve')
+  @UseGuards(EnhancedJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resolve session anomaly' })
+  @ApiResponse({ status: 200, description: 'Anomaly resolved successfully' })
+  async resolveAnomaly(@Param('anomalyId') anomalyId: string, @Request() req) {
+    await this.sessionAnomalyService.resolveAnomaly(anomalyId, req.userId, req.tenantId);
+    return { message: 'Anomaly resolved successfully' };
   }
 }
 

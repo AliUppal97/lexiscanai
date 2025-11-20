@@ -10,6 +10,14 @@ import { SessionService } from './session.service';
 import { MfaService } from './mfa.service';
 import { ApiKeyService } from './api-key.service';
 import { SsoService } from './sso.service';
+import { SamlService } from './saml.service';
+import { PasswordlessService } from './passwordless.service';
+import { WebAuthnService } from './webauthn.service';
+import { AbacService } from './abac.service';
+import { SessionAnomalyService } from './session-anomaly.service';
+import { EnhancedPermissionsService } from './enhanced-permissions.service';
+import { TokenSecurityService } from './token-security.service';
+import { AdaptiveMfaService } from './adaptive-mfa.service';
 import { JwtAuthGuard, PermissionsGuard, RolesGuard } from './auth.guard';
 import { EnhancedJwtAuthGuard, ApiKeyAuthGuard, OptionalAuthGuard } from './enhanced-auth.guard';
 import { PrismaService } from '../../common/prisma.service';
@@ -39,6 +47,14 @@ import { CacheService } from '../../services/cache.service';
     MfaService,
     ApiKeyService,
     SsoService,
+    SamlService,
+    PasswordlessService,
+    WebAuthnService,
+    AbacService,
+    SessionAnomalyService,
+    EnhancedPermissionsService,
+    TokenSecurityService,
+    AdaptiveMfaService,
     
     // Guards (backward compatibility)
     JwtAuthGuard,
@@ -63,6 +79,14 @@ import { CacheService } from '../../services/cache.service';
     MfaService,
     ApiKeyService,
     SsoService,
+    SamlService,
+    PasswordlessService,
+    WebAuthnService,
+    AbacService,
+    SessionAnomalyService,
+    EnhancedPermissionsService,
+    TokenSecurityService,
+    AdaptiveMfaService,
     
     // Guards
     JwtAuthGuard,
