@@ -1,49 +1,21 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsController } from './analytics.controller';
-import { AnalyticsService } from '../../services/analytics.service';
-import { CacheService } from '../../services/cache.service';
+import { ReportBuilderService } from './report-builder.service';
+import { DashboardService } from './dashboard.service';
+import { ReportSchedulerService } from './report-scheduler.service';
 import { PrismaService } from '../../common/prisma.service';
-import { UsageTrackingService } from './usage-tracking.service';
-import { BillingAnalyticsService } from './billing-analytics.service';
-import { UserAnalyticsService } from './user-analytics.service';
-import { DocumentAnalyticsService } from './document-analytics.service';
-import { DashboardMetricsService } from './dashboard-metrics.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [
-    ConfigModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d'),
-        },
-      }),
-      inject: [ConfigService],
-    }),
-  ],
+  imports: [ScheduleModule.forRoot(), AuthModule],
   controllers: [AnalyticsController],
   providers: [
+    ReportBuilderService,
+    DashboardService,
+    ReportSchedulerService,
     PrismaService,
-    AnalyticsService,
-    CacheService,
-    UsageTrackingService,
-    BillingAnalyticsService,
-    UserAnalyticsService,
-    DocumentAnalyticsService,
-    DashboardMetricsService,
   ],
-  exports: [
-    AnalyticsService,
-    UsageTrackingService,
-    BillingAnalyticsService,
-    UserAnalyticsService,
-    DocumentAnalyticsService,
-    DashboardMetricsService,
-  ],
+  exports: [ReportBuilderService, DashboardService],
 })
 export class AnalyticsModule {}
-

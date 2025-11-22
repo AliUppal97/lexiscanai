@@ -1,135 +1,97 @@
-import { Controller, Get, Post, Query, Body, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/auth.guard';
-import { TenantId, UserId } from '../auth/auth.service';
-import { AnalyticsService } from '../../services/analytics.service';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { EnhancedJwtAuthGuard } from '../auth/enhanced-auth.guard';
+import { ReportBuilderService } from './report-builder.service';
+import { DashboardService } from './dashboard.service';
+import { ReportSchedulerService } from './report-scheduler.service';
 
+@ApiTags('Analytics')
+@ApiBearerAuth()
 @Controller('analytics')
-@UseGuards(JwtAuthGuard)
+@UseGuards(EnhancedJwtAuthGuard)
 export class AnalyticsController {
-  constructor(private analyticsService: AnalyticsService) {}
+  constructor(
+    private reportBuilder: ReportBuilderService,
+    private dashboardService: DashboardService,
+    private reportScheduler: ReportSchedulerService,
+  ) {}
 
-  @Post('track')
-  async trackEvent(
-    @TenantId() tenantId: string,
-    @UserId() userId: string,
-    @Body()
-    body: {
-      event: string;
-      category: string;
-      properties?: Record<string, any>;
-      metadata?: Record<string, any>;
-    },
-  ) {
-    await this.analyticsService.track({
-      tenantId,
-      userId,
-      ...body,
-    });
-    return { success: true };
+  @Get('reports')
+  @ApiOperation({ summary: 'List reports' })
+  async listReports(@Request() req: any): Promise<any[]> {
+    // TODO: Implement list
+    return [];
   }
 
-  @Get('metrics')
-  async getMetrics(
-    @TenantId() tenantId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    return this.analyticsService.getMetrics(
-      tenantId,
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
+  @Post('reports')
+  @ApiOperation({ summary: 'Create report' })
+  async createReport(@Request() req: any, @Body() dto: any): Promise<any> {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.id;
+    return this.reportBuilder.createReport(tenantId, userId, dto);
   }
 
-  @Get('realtime')
-  async getRealTimeMetrics(@TenantId() tenantId: string) {
-    return this.analyticsService.getRealTimeMetrics(tenantId);
+  @Get('reports/:id')
+  @ApiOperation({ summary: 'Get report' })
+  async getReport(@Request() req: any, @Param('id') id: string): Promise<any> {
+    const tenantId = req.user.tenantId;
+    return this.reportBuilder.getReportData(id, tenantId);
   }
 
-  @Get('time-series')
-  async getTimeSeries(
-    @TenantId() tenantId: string,
-    @Query('event') event: string,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Query('interval') interval?: 'hour' | 'day' | 'week' | 'month',
-  ) {
-    return this.analyticsService.getTimeSeries(
-      tenantId,
-      event,
-      new Date(startDate),
-      new Date(endDate),
-      interval || 'day',
-    );
+  @Put('reports/:id')
+  @ApiOperation({ summary: 'Update report' })
+  async updateReport(@Request() req: any, @Param('id') id: string, @Body() dto: any): Promise<any> {
+    const tenantId = req.user.tenantId;
+    return this.reportBuilder.updateReport(id, tenantId, dto);
   }
 
-  @Get('funnel')
-  async getFunnelAnalytics(
-    @TenantId() tenantId: string,
-    @Query('steps') steps: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    return this.analyticsService.getFunnelAnalytics(
-      tenantId,
-      steps.split(','),
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
+  @Delete('reports/:id')
+  @ApiOperation({ summary: 'Delete report' })
+  async deleteReport(@Request() req: any, @Param('id') id: string): Promise<void> {
+    const tenantId = req.user.tenantId;
+    return this.reportBuilder.deleteReport(id, tenantId);
   }
 
-  @Get('cohort')
-  async getCohortAnalytics(
-    @TenantId() tenantId: string,
-    @Query('cohortDate') cohortDate: string,
-    @Query('retentionPeriods') retentionPeriods?: string,
-  ) {
-    return this.analyticsService.getCohortAnalytics(
-      tenantId,
-      new Date(cohortDate),
-      retentionPeriods ? parseInt(retentionPeriods) : undefined,
-    );
+  @Post('reports/:id/execute')
+  @ApiOperation({ summary: 'Execute report' })
+  async executeReport(@Request() req: any, @Param('id') id: string, @Body() filters?: any): Promise<any> {
+    const tenantId = req.user.tenantId;
+    return this.reportBuilder.executeReport(id, tenantId, filters);
   }
 
-  @Get('feature-usage')
-  async getFeatureUsage(
-    @TenantId() tenantId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    return this.analyticsService.getFeatureUsage(
-      tenantId,
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
+  @Get('dashboards')
+  @ApiOperation({ summary: 'List dashboards' })
+  async listDashboards(@Request() req: any): Promise<any[]> {
+    // TODO: Implement list
+    return [];
   }
 
-  @Get('api-usage')
-  async getAPIUsage(
-    @TenantId() tenantId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    return this.analyticsService.getAPIUsage(
-      tenantId,
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
+  @Post('dashboards')
+  @ApiOperation({ summary: 'Create dashboard' })
+  async createDashboard(@Request() req: any, @Body() dto: any): Promise<any> {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.id;
+    return this.dashboardService.createDashboard(tenantId, userId, dto);
   }
 
-  @Get('export')
-  async exportData(
-    @TenantId() tenantId: string,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Query('format') format?: 'json' | 'csv',
-  ) {
-    return this.analyticsService.exportData(
-      tenantId,
-      new Date(startDate),
-      new Date(endDate),
-      format || 'json',
-    );
+  @Get('dashboards/:id')
+  @ApiOperation({ summary: 'Get dashboard data' })
+  async getDashboard(@Request() req: any, @Param('id') id: string): Promise<any> {
+    const tenantId = req.user.tenantId;
+    return this.dashboardService.getDashboardData(id, tenantId);
+  }
+
+  @Get('report-templates')
+  @ApiOperation({ summary: 'List report templates' })
+  async listTemplates(): Promise<any[]> {
+    // TODO: Implement list
+    return [];
+  }
+
+  @Get('scheduled-reports')
+  @ApiOperation({ summary: 'List scheduled reports' })
+  async listScheduledReports(@Request() req: any): Promise<any[]> {
+    // TODO: Implement list
+    return [];
   }
 }
-
