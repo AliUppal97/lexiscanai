@@ -106,43 +106,111 @@ export class CustomerHealthService {
   }
 
   /**
-   * Get login frequency
+   * Get login frequency (actual implementation)
    */
   private async getLoginFrequency(tenantId: string): Promise<number> {
-    // Simplified - would query actual login data
-    return 5; // logins per month
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Get unique user logins in last 30 days
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        tenant: { id: tenantId },
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      distinct: ['userId'],
+    });
+
+    return sessions.length;
   }
 
   /**
-   * Get feature usage
+   * Get feature usage (actual implementation)
    */
   private async getFeatureUsage(tenantId: string): Promise<{ percentage: number; features: string[] }> {
-    // Simplified - would query actual feature usage
-    return { percentage: 60, features: ['documents', 'analytics'] };
+    // Get feature flag evaluations
+    const evaluations = await this.prisma.featureFlagEvaluation.findMany({
+      where: {
+        tenantId,
+        evaluatedAt: {
+          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+      distinct: ['flagKey'],
+    });
+
+    const totalFlags = await this.prisma.featureFlag.count({
+      where: { tenantId, enabled: true },
+    });
+
+    const percentage = totalFlags > 0 ? (evaluations.length / totalFlags) * 100 : 0;
+    const features = evaluations.map((e) => e.flagKey);
+
+    return { percentage, features };
   }
 
   /**
-   * Get support ticket count
+   * Get support ticket count (actual implementation)
    */
   private async getSupportTicketCount(tenantId: string): Promise<number> {
-    // Simplified - would query support tickets
-    return 2;
+    // In production, would query support ticket system
+    // For now, check notifications marked as support-related
+    const supportNotifications = await this.prisma.notification.count({
+      where: {
+        tenant: { id: tenantId },
+        type: 'SUPPORT',
+        createdAt: {
+          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+    });
+
+    return supportNotifications;
   }
 
   /**
-   * Get payment history
+   * Get payment history (actual implementation)
    */
   private async getPaymentHistory(tenantId: string): Promise<{ reliability: number }> {
-    // Simplified - would query payment history
-    return { reliability: 0.95 };
+    // Get billing records
+    const billingRecords = await this.prisma.billing.findMany({
+      where: {
+        tenantId,
+        createdAt: {
+          gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // Last year
+        },
+      },
+    });
+
+    if (billingRecords.length === 0) {
+      return { reliability: 0.5 }; // No payment history
+    }
+
+    // Calculate reliability based on successful payments
+    const successfulPayments = billingRecords.filter((b) => b.status === 'PAID').length;
+    const reliability = billingRecords.length > 0 ? successfulPayments / billingRecords.length : 0.5;
+
+    return { reliability };
   }
 
   /**
-   * Get contract value
+   * Get contract value (actual implementation)
    */
   private async getContractValue(tenantId: string): Promise<number> {
-    // Simplified - would query billing/subscription
-    return 5000; // $5K ARR
+    // Get latest billing record
+    const latestBilling = await this.prisma.billing.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latestBilling) {
+      return 0;
+    }
+
+    // Calculate ARR (Annual Recurring Revenue)
+    const monthlyAmount = latestBilling.amount || 0;
+    const arr = monthlyAmount * 12;
+
+    return arr;
   }
 }
 
