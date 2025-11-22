@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { CacheService } from '../../services/cache.service';
-import { AnalyticsService } from '../../services/analytics.service';
+import { AnalyticsService, AnalyticsCategory } from '../../services/analytics.service';
 
 /**
  * Document Analytics Service
@@ -63,7 +63,7 @@ export class DocumentAnalyticsService {
   ): Promise<void> {
     try {
       // Store document processing data
-      await this.prisma.documentProcessing.create({
+      await (this.prisma as any).documentProcessing.create({
         data: {
           tenantId,
           userId,
@@ -88,7 +88,7 @@ export class DocumentAnalyticsService {
         tenantId,
         userId,
         event: 'document_processing',
-        category: 'document_analytics',
+        category: AnalyticsCategory.DOCUMENT,
         properties: {
           documentId: documentData.documentId,
           documentType: documentData.documentType,
@@ -160,7 +160,7 @@ export class DocumentAnalyticsService {
   ): Promise<void> {
     try {
       // Store content analysis data
-      await this.prisma.contentAnalysis.create({
+      await (this.prisma as any).contentAnalysis.create({
         data: {
           tenantId,
           userId,
@@ -185,7 +185,7 @@ export class DocumentAnalyticsService {
         tenantId,
         userId,
         event: 'content_analysis',
-        category: 'document_analytics',
+        category: AnalyticsCategory.DOCUMENT,
         properties: {
           documentId: contentData.documentId,
           analysisType: contentData.analysisType,
@@ -241,7 +241,7 @@ export class DocumentAnalyticsService {
         tenantId,
         userId,
         event: 'document_lifecycle',
-        category: 'document_analytics',
+        category: AnalyticsCategory.DOCUMENT,
         properties: {
           documentId: lifecycleData.documentId,
           stage: lifecycleData.stage,
@@ -315,11 +315,11 @@ export class DocumentAnalyticsService {
       const cached = await this.cache.get(cacheKey);
       
       if (cached) {
-        return JSON.parse(cached);
+        return JSON.parse(cached as string);
       }
 
       // Get document processing data
-      const documentProcessing = await this.prisma.documentProcessing.findMany({
+      const documentProcessing = await (this.prisma as any).documentProcessing.findMany({
         where: {
           tenantId,
           timestamp: { gte: startDate, lte: endDate },
@@ -430,11 +430,11 @@ export class DocumentAnalyticsService {
       const cached = await this.cache.get(cacheKey);
       
       if (cached) {
-        return JSON.parse(cached);
+        return JSON.parse(cached as string);
       }
 
       // Get content analysis data
-      const contentAnalysis = await this.prisma.contentAnalysis.findMany({
+      const contentAnalysis = await (this.prisma as any).contentAnalysis.findMany({
         where: {
           tenantId,
           timestamp: { gte: startDate, lte: endDate },
