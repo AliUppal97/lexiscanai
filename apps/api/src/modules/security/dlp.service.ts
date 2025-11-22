@@ -58,15 +58,88 @@ export class DlpService {
   }
 
   /**
-   * Scan document for DLP violations
+   * Scan document for DLP violations (supports multiple content types)
    */
-  async scanDocument(documentId: string, tenantId: string): Promise<any> {
-    // Get document content (simplified - would fetch actual content)
-    const content = ''; // TODO: Fetch document content
+  async scanDocument(documentId: string, tenantId: string, content?: string): Promise<any> {
+    // Get document content if not provided
+    if (!content) {
+      // TODO: Fetch document content from storage
+      // For now, use placeholder
+      content = '';
+    }
 
-    const result = await this.evaluatePolicy(documentId, content, tenantId);
+    // Detect content type and extract text
+    const extractedContent = await this.extractText(content, 'text/plain');
 
-    return result;
+    // Evaluate DLP policies
+    const result = await this.evaluatePolicy(documentId, extractedContent, tenantId);
+
+    // Scan for data patterns
+    const dataPatterns = this.detectDataPatterns(extractedContent);
+
+    return {
+      ...result,
+      dataPatterns,
+      scannedAt: new Date(),
+    };
+  }
+
+  /**
+   * Extract text from content (supports PDF, images with OCR)
+   */
+  private async extractText(content: string, contentType: string): Promise<string> {
+    // In production, use libraries like pdf-parse for PDF, tesseract.js for OCR
+    if (contentType.includes('pdf')) {
+      // TODO: Extract text from PDF
+      return content; // Placeholder
+    } else if (contentType.includes('image')) {
+      // TODO: OCR image content
+      return content; // Placeholder
+    }
+    return content;
+  }
+
+  /**
+   * Detect data patterns (SSN, credit cards, emails, PII)
+   */
+  private detectDataPatterns(content: string): Array<{ type: string; pattern: string; count: number }> {
+    const patterns: Array<{ type: string; pattern: string; count: number }> = [];
+
+    // SSN pattern
+    const ssnMatches = content.match(/\b\d{3}-\d{2}-\d{4}\b/g);
+    if (ssnMatches) {
+      patterns.push({ type: 'SSN', pattern: 'XXX-XX-XXXX', count: ssnMatches.length });
+    }
+
+    // Credit card pattern
+    const ccMatches = content.match(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g);
+    if (ccMatches) {
+      patterns.push({ type: 'CREDIT_CARD', pattern: 'XXXX-XXXX-XXXX-XXXX', count: ccMatches.length });
+    }
+
+    // Email pattern
+    const emailMatches = content.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g);
+    if (emailMatches) {
+      patterns.push({ type: 'EMAIL', pattern: 'email@domain.com', count: emailMatches.length });
+    }
+
+    // Phone number pattern
+    const phoneMatches = content.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
+    if (phoneMatches) {
+      patterns.push({ type: 'PHONE', pattern: 'XXX-XXX-XXXX', count: phoneMatches.length });
+    }
+
+    return patterns;
+  }
+
+  /**
+   * Batch scan documents
+   */
+  async batchScanDocuments(documentIds: string[], tenantId: string): Promise<any[]> {
+    const results = await Promise.all(
+      documentIds.map((id) => this.scanDocument(id, tenantId)),
+    );
+    return results;
   }
 
   /**

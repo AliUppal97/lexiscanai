@@ -112,19 +112,99 @@ export class ZeroTrustService {
   }
 
   /**
-   * Get user history score
+   * Get user history score (analyzes login patterns, behavior)
    */
   private async getUserHistory(userId: string): Promise<{ score: number }> {
-    // Simplified - would analyze user login patterns, etc.
-    return { score: 20 };
+    // Analyze login frequency and patterns
+    const sessions = await this.prisma.session.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 30, // Last 30 sessions
+    });
+
+    if (sessions.length === 0) {
+      return { score: 0 }; // No history
+    }
+
+    // Calculate score based on:
+    // 1. Login frequency (more frequent = higher score)
+    // 2. Consistent login times (more consistent = higher score)
+    // 3. Account age (older = higher score)
+
+    const daysSinceFirstLogin = (Date.now() - sessions[sessions.length - 1].createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const loginFrequency = sessions.length / Math.max(1, daysSinceFirstLogin / 30); // Logins per month
+
+    let score = 0;
+    score += Math.min(30, loginFrequency * 5); // Up to 30 points for frequency
+    score += Math.min(20, daysSinceFirstLogin / 30); // Up to 20 points for account age
+
+    // Check for consistent login times (simplified)
+    const loginHours = sessions.map((s) => s.createdAt.getHours());
+    const avgHour = loginHours.reduce((sum, h) => sum + h, 0) / loginHours.length;
+    const variance = loginHours.reduce((sum, h) => sum + Math.pow(h - avgHour, 2), 0) / loginHours.length;
+    if (variance < 4) {
+      score += 10; // Consistent login times
+    }
+
+    return { score: Math.min(100, score) };
   }
 
   /**
    * Get recent activity score
    */
   private async getRecentActivity(userId: string): Promise<{ score: number }> {
-    // Simplified - would analyze recent user activity
-    return { score: 10 };
+    // Analyze recent user activity (last 24 hours)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Check document activity
+    const recentDocuments = await this.prisma.document.count({
+      where: {
+        userId,
+        createdAt: { gte: oneDayAgo },
+      },
+    });
+
+    // Check session activity
+    const recentSessions = await this.prisma.session.count({
+      where: {
+        userId,
+        createdAt: { gte: oneDayAgo },
+      },
+    });
+
+    let score = 0;
+    score += Math.min(30, recentDocuments * 5); // Up to 30 points for document activity
+    score += Math.min(20, recentSessions * 10); // Up to 20 points for session activity
+
+    return { score: Math.min(100, score) };
+  }
+
+  /**
+   * Continuous monitoring
+   */
+  async monitorAccess(userId: string, resource: string, context: any): Promise<void> {
+    const trustScore = await this.calculateTrustScore(userId, context.deviceId);
+
+    // Log access attempt
+    this.logger.debug(`Access attempt: user=${userId}, resource=${resource}, trustScore=${trustScore}`);
+
+    // If trust score drops below threshold, require additional verification
+    if (trustScore < 50) {
+      await this.prisma.securityIncident.create({
+        data: {
+          type: 'SUSPICIOUS_ACTIVITY',
+          severity: 'MEDIUM',
+          status: 'OPEN',
+          details: {
+            userId,
+            resource,
+            trustScore,
+            context,
+          },
+          tenantId: '', // Would get from user
+        },
+      });
+    }
   }
 }
 

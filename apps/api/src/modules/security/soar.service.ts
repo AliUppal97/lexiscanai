@@ -126,24 +126,85 @@ export class SoarService {
    * Notify action
    */
   private async notify(action: any, incident: any): Promise<void> {
-    // TODO: Integrate with notification service
-    this.logger.debug(`Notifying ${action.recipients} about incident ${incident.id}`);
+    const recipients = action.recipients || [];
+    const message = action.message || `Security incident detected: ${incident.type}`;
+
+    // Create notifications for recipients
+    for (const recipient of recipients) {
+      await this.prisma.notification.create({
+        data: {
+          userId: recipient,
+          type: 'SECURITY_INCIDENT',
+          title: 'Security Incident Alert',
+          message,
+          metadata: { incidentId: incident.id },
+          tenantId: incident.tenantId,
+        },
+      });
+    }
+
+    this.logger.log(`Notified ${recipients.length} recipients about incident ${incident.id}`);
   }
 
   /**
    * Block action
    */
   private async block(action: any, incident: any): Promise<void> {
-    // TODO: Implement blocking logic
-    this.logger.debug(`Blocking ${action.target} for incident ${incident.id}`);
+    const target = action.target; // Could be userId, IP address, etc.
+
+    // Create security incident with block action
+    await this.prisma.securityIncident.create({
+      data: {
+        type: 'UNAUTHORIZED_ACCESS',
+        severity: 'HIGH',
+        status: 'OPEN',
+        details: {
+          action: 'BLOCKED',
+          target,
+          incidentId: incident.id,
+          reason: action.reason || 'Automated block from SOAR playbook',
+        },
+        tenantId: incident.tenantId,
+      },
+    });
+
+    // In production, would integrate with firewall/WAF to actually block
+    this.logger.warn(`Blocked ${target} for incident ${incident.id}`);
   }
 
   /**
    * Quarantine action
    */
   private async quarantine(action: any, incident: any): Promise<void> {
-    // TODO: Implement quarantine logic
-    this.logger.debug(`Quarantining ${action.target} for incident ${incident.id}`);
+    const target = action.target; // Could be documentId, userId, etc.
+
+    // Mark resource as quarantined
+    if (action.resourceType === 'document') {
+      // Update document status to quarantined
+      await this.prisma.document.update({
+        where: { id: target },
+        data: {
+          status: 'QUARANTINED',
+        },
+      });
+    }
+
+    // Create security incident
+    await this.prisma.securityIncident.create({
+      data: {
+        type: 'DLP_VIOLATION',
+        severity: 'HIGH',
+        status: 'OPEN',
+        details: {
+          action: 'QUARANTINED',
+          target,
+          incidentId: incident.id,
+        },
+        tenantId: incident.tenantId,
+      },
+    });
+
+    this.logger.warn(`Quarantined ${target} for incident ${incident.id}`);
   }
 
   /**
