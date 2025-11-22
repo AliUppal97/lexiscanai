@@ -43,51 +43,31 @@ export class ApiKeyService {
     const rawKey = this.generateApiKey();
     const hashedKey = await this.hashApiKey(rawKey);
 
-    // Create API key record (you'll need to add ApiKey model to Prisma schema)
-    // For now, we'll store it in a generic way
-    // In production, add ApiKey model to schema:
-    // model ApiKey {
-    //   id          String   @id @default(cuid())
-    //   tenantId    String
-    //   userId      String
-    //   name        String
-    //   description String?
-    //   keyHash     String   @unique
-    //   scopes      String[] // Array of permission strings
-    //   lastUsedAt  DateTime?
-    //   expiresAt   DateTime?
-    //   isActive    Boolean  @default(true)
-    //   revokedAt   DateTime?
-    //   createdAt   DateTime @default(now())
-    //   updatedAt   DateTime @updatedAt
-    // }
+    // Create API key record in database
+    const apiKeyRecord = await this.prisma.apiKey.create({
+      data: {
+        tenantId,
+        userId,
+        name,
+        description,
+        keyHash: hashedKey,
+        scopes,
+        expiresAt,
+        isActive: true,
+      },
+    });
 
-    // For now, store in a JSON field or separate table
-    // This is a placeholder implementation
-    const apiKeyInfo: ApiKeyInfo = {
-      id: `key_${randomBytes(16).toString('hex')}`,
-      name,
-      description,
-      scopes,
-      expiresAt: expiresAt || undefined,
-      createdAt: new Date(),
-    };
-
-    // TODO: Store in database
     this.logger.log(`API Key created for user ${userId} in tenant ${tenantId}: ${name}`);
 
-    // In production, store in database:
-    // await this.prisma.apiKey.create({
-    //   data: {
-    //     tenantId,
-    //     userId,
-    //     name,
-    //     description,
-    //     keyHash: hashedKey,
-    //     scopes,
-    //     expiresAt,
-    //   },
-    // });
+    const apiKeyInfo: ApiKeyInfo = {
+      id: apiKeyRecord.id,
+      name: apiKeyRecord.name,
+      description: apiKeyRecord.description || undefined,
+      scopes: apiKeyRecord.scopes,
+      lastUsedAt: apiKeyRecord.lastUsedAt || undefined,
+      expiresAt: apiKeyRecord.expiresAt || undefined,
+      createdAt: apiKeyRecord.createdAt,
+    };
 
     return {
       apiKey: `${this.keyPrefix}${rawKey}`, // Return plain key only once
@@ -98,7 +78,14 @@ export class ApiKeyService {
   /**
    * Verify API key
    */
-  async verifyApiKey(apiKey: string): Promise<{ valid: boolean; userId?: string; tenantId?: string; scopes?: string[] }> {
+  async verifyApiKey(apiKey: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    tenantId?: string;
+    scopes?: string[];
+    keyId?: string;
+    apiKey?: any;
+  }> {
     try {
       // Extract key from prefix
       if (!apiKey.startsWith(this.keyPrefix)) {
@@ -108,39 +95,59 @@ export class ApiKeyService {
       const rawKey = apiKey.substring(this.keyPrefix.length);
       const hashedKey = await this.hashApiKey(rawKey);
 
-      // TODO: Lookup in database
-      // const apiKeyRecord = await this.prisma.apiKey.findUnique({
-      //   where: { keyHash: hashedKey },
-      //   include: { user: true, tenant: true },
-      // });
+      // Lookup in database
+      const apiKeyRecord = await this.prisma.apiKey.findUnique({
+        where: { keyHash: hashedKey },
+        include: {
+          user: {
+            select: {
+              id: true,
+              tenantId: true,
+              isActive: true,
+            },
+          },
+        },
+      });
 
-      // if (!apiKeyRecord || !apiKeyRecord.isActive) {
-      //   return { valid: false };
-      // }
+      if (!apiKeyRecord || !apiKeyRecord.isActive) {
+        return { valid: false };
+      }
 
-      // if (apiKeyRecord.revokedAt) {
-      //   return { valid: false };
-      // }
+      if (apiKeyRecord.revokedAt) {
+        return { valid: false };
+      }
 
-      // if (apiKeyRecord.expiresAt && apiKeyRecord.expiresAt < new Date()) {
-      //   return { valid: false };
-      // }
+      if (apiKeyRecord.expiresAt && apiKeyRecord.expiresAt < new Date()) {
+        return { valid: false };
+      }
 
-      // // Update last used
-      // await this.prisma.apiKey.update({
-      //   where: { id: apiKeyRecord.id },
-      //   data: { lastUsedAt: new Date() },
-      // });
+      // Check user is active
+      if (!apiKeyRecord.user.isActive) {
+        return { valid: false };
+      }
 
-      // return {
-      //   valid: true,
-      //   userId: apiKeyRecord.userId,
-      //   tenantId: apiKeyRecord.tenantId,
-      //   scopes: apiKeyRecord.scopes,
-      // };
+      // Update last used (async, don't wait)
+      this.prisma.apiKey
+        .update({
+          where: { id: apiKeyRecord.id },
+          data: { lastUsedAt: new Date() },
+        })
+        .catch((error) => {
+          this.logger.warn(`Failed to update lastUsedAt: ${error.message}`);
+        });
 
-      // Placeholder
-      return { valid: false };
+      return {
+        valid: true,
+        keyId: apiKeyRecord.id,
+        userId: apiKeyRecord.userId,
+        tenantId: apiKeyRecord.user.tenantId,
+        scopes: apiKeyRecord.scopes,
+        apiKey: {
+          id: apiKeyRecord.id,
+          name: apiKeyRecord.name,
+          scopes: apiKeyRecord.scopes,
+        },
+      };
     } catch (error) {
       this.logger.error(`API key verification failed: ${error.message}`);
       return { valid: false };
@@ -151,53 +158,59 @@ export class ApiKeyService {
    * Get API keys for user
    */
   async getUserApiKeys(userId: string, tenantId: string): Promise<ApiKeyInfo[]> {
-    // TODO: Fetch from database
-    // return this.prisma.apiKey.findMany({
-    //   where: {
-    //     userId,
-    //     tenantId,
-    //     isActive: true,
-    //     revokedAt: null,
-    //   },
-    //   select: {
-    //     id: true,
-    //     name: true,
-    //     description: true,
-    //     scopes: true,
-    //     lastUsedAt: true,
-    //     expiresAt: true,
-    //     createdAt: true,
-    //   },
-    //   orderBy: { createdAt: 'desc' },
-    // });
+    const apiKeys = await this.prisma.apiKey.findMany({
+      where: {
+        userId,
+        tenantId,
+        isActive: true,
+        revokedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        scopes: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    return [];
+    return apiKeys.map((key) => ({
+      id: key.id,
+      name: key.name,
+      description: key.description || undefined,
+      scopes: key.scopes,
+      lastUsedAt: key.lastUsedAt || undefined,
+      expiresAt: key.expiresAt || undefined,
+      createdAt: key.createdAt,
+    }));
   }
 
   /**
    * Revoke API key
    */
   async revokeApiKey(apiKeyId: string, userId: string, tenantId: string): Promise<void> {
-    // TODO: Revoke in database
-    // const apiKey = await this.prisma.apiKey.findFirst({
-    //   where: {
-    //     id: apiKeyId,
-    //     userId,
-    //     tenantId,
-    //   },
-    // });
+    const apiKey = await this.prisma.apiKey.findFirst({
+      where: {
+        id: apiKeyId,
+        userId,
+        tenantId,
+      },
+    });
 
-    // if (!apiKey) {
-    //   throw new NotFoundException('API key not found');
-    // }
+    if (!apiKey) {
+      throw new NotFoundException('API key not found');
+    }
 
-    // await this.prisma.apiKey.update({
-    //   where: { id: apiKeyId },
-    //   data: {
-    //     isActive: false,
-    //     revokedAt: new Date(),
-    //   },
-    // });
+    await this.prisma.apiKey.update({
+      where: { id: apiKeyId },
+      data: {
+        isActive: false,
+        revokedAt: new Date(),
+      },
+    });
 
     this.logger.log(`API key revoked: ${apiKeyId}`);
   }

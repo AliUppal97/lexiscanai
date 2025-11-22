@@ -13,6 +13,7 @@ import { CacheService } from '../../services/cache.service';
 import { SecurityService } from './security.service';
 import { SessionService } from './session.service';
 import { TokenSecurityService, TokenBindingInfo } from './token-security.service';
+import { ApiKeyService } from './api-key.service';
 import { Reflector } from '@nestjs/core';
 
 /**
@@ -261,11 +262,20 @@ export class EnhancedJwtAuthGuard implements CanActivate {
 @Injectable()
 export class ApiKeyAuthGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyAuthGuard.name);
+  private readonly cachePrefix = 'api_key:';
+  private readonly CACHE_TTL = 60; // 1 minute
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
-  ) {}
+    private cacheService: CacheService,
+    private apiKeyService: ApiKeyService,
+  ) {
+    // Ensure ApiKeyService is injected
+    if (!this.apiKeyService) {
+      throw new Error('ApiKeyService must be injected into ApiKeyAuthGuard');
+    }
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -274,33 +284,115 @@ export class ApiKeyAuthGuard implements CanActivate {
     const apiKey = this.extractApiKey(request);
 
     if (!apiKey) {
-      throw new UnauthorizedException('API key required');
+      // Prevent key enumeration - same error for missing/invalid keys
+      throw new UnauthorizedException('Invalid API key');
     }
 
     try {
-      // TODO: Implement API key verification
-      // const verification = await this.apiKeyService.verifyApiKey(apiKey);
-      // if (!verification.valid) {
-      //   throw new UnauthorizedException('Invalid API key');
-      // }
+      // Verify API key (with caching)
+      const verification = await this.verifyApiKey(apiKey);
+
+      if (!verification.valid) {
+        this.logger.warn(`Invalid API key attempt: ${apiKey.substring(0, 8)}...`);
+        throw new UnauthorizedException('Invalid API key');
+      }
+
+      // Check rate limits (would integrate with RateLimitService)
+      await this.checkRateLimit(verification.keyId!, request);
 
       // Attach API key info to request
-      // request.apiKey = verification;
-      // request.userId = verification.userId;
-      // request.tenantId = verification.tenantId;
+      request.apiKey = verification.apiKey;
+      request.userId = verification.userId;
+      request.tenantId = verification.tenantId;
+      request.scopes = verification.scopes || [];
 
-      // For now, placeholder
-      throw new UnauthorizedException('API key authentication not fully implemented');
+      // Track usage (async, don't wait)
+      this.trackUsage(verification.keyId!, request).catch((error) => {
+        this.logger.warn(`Failed to track API key usage: ${error.message}`);
+      });
 
-      // return true;
+      return true;
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
+      if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
         throw error;
       }
 
-      this.logger.error(`API key authentication failed: ${error.message}`);
+      this.logger.error(`API key authentication failed: ${error.message}`, error.stack);
       throw new UnauthorizedException('Invalid API key');
     }
+  }
+
+  /**
+   * Verify API key with caching
+   */
+  private async verifyApiKey(apiKey: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    tenantId?: string;
+    scopes?: string[];
+    keyId?: string;
+    apiKey?: any;
+  }> {
+    // Check cache first
+    const cacheKey = `${this.cachePrefix}${this.hashKey(apiKey)}`;
+    const cached = await this.cacheService.get<{
+      valid: boolean;
+      userId?: string;
+      tenantId?: string;
+      scopes?: string[];
+      keyId?: string;
+      apiKey?: any;
+    }>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    // Verify using ApiKeyService
+    const verification = await this.apiKeyService.verifyApiKey(apiKey);
+
+    // Cache result (even invalid ones to prevent enumeration)
+    await this.cacheService.set(cacheKey, verification, this.CACHE_TTL);
+
+    return verification;
+  }
+
+  /**
+   * Check rate limits for API key
+   */
+  private async checkRateLimit(keyId: string, request: any): Promise<void> {
+    // In production, integrate with RateLimitService
+    // For now, use Redis for rate limiting
+    const rateLimitKey = `api_key_rate_limit:${keyId}`;
+    const current = await this.cacheService.get<number>(rateLimitKey) || 0;
+    const limit = 1000; // 1000 requests per hour per API key
+
+    if (current >= limit) {
+      throw new ForbiddenException('API key rate limit exceeded');
+    }
+
+    // Increment counter
+    await this.cacheService.increment(rateLimitKey);
+    await this.cacheService.expire(rateLimitKey, 3600); // 1 hour TTL
+  }
+
+  /**
+   * Track API key usage
+   */
+  private async trackUsage(keyId: string, request: any): Promise<void> {
+    // Log usage for analytics and security monitoring
+    this.logger.debug(`API key usage: ${keyId} - ${request.method} ${request.url}`);
+
+    // In production, would store in database or analytics service
+    // For now, just log
+  }
+
+  /**
+   * Hash API key for cache key
+   */
+  private hashKey(key: string): string {
+    const crypto = require('crypto');
+    return crypto.createHash('sha256').update(key).digest('hex');
   }
 
   /**
