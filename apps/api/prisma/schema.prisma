@@ -1105,9 +1105,32 @@ model ABTest {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // Relations
+  events ABTestEvent[]
+
   @@index([status])
   @@index([startDate, endDate])
   @@map("ab_tests")
+}
+
+model ABTestEvent {
+  id           String   @id @default(cuid())
+  experimentId String
+  userId       String
+  variant      String
+  eventType    String // e.g., 'conversion', 'click', 'purchase'
+  eventValue   Float? // Optional numeric value (e.g., revenue)
+  timestamp    DateTime @default(now())
+  metadata     Json? // Additional event metadata
+
+  // Relations
+  experiment ABTest @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId, variant, timestamp])
+  @@index([experimentId, eventType])
+  @@index([userId])
+  @@index([timestamp])
+  @@map("ab_test_events")
 }
 
 // ============================================================================
