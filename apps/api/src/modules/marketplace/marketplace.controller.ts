@@ -5,6 +5,7 @@ import { MarketplaceService } from './marketplace.service';
 import { DeveloperPlatformService } from './developer-platform.service';
 import { AppExecutionService } from './app-execution.service';
 import { RevenueService } from './revenue.service';
+import { DeveloperSdkService } from './developer-sdk.service';
 
 @ApiTags('Marketplace')
 @ApiBearerAuth()
@@ -16,6 +17,7 @@ export class MarketplaceController {
     private developerPlatformService: DeveloperPlatformService,
     private appExecutionService: AppExecutionService,
     private revenueService: RevenueService,
+    private sdkService: DeveloperSdkService,
   ) {}
 
   @Get('apps')
@@ -86,6 +88,40 @@ export class MarketplaceController {
       return { totalRevenue: 0, platformCommission: 0, developerRevenue: 0, transactions: 0 };
     }
     return this.revenueService.getDeveloperRevenue(developer.id);
+  }
+
+  @Get('developer/sdk/docs')
+  @ApiOperation({ summary: 'Get SDK documentation' })
+  async getSdkDocs(): Promise<{ docs: string }> {
+    const docs = await this.sdkService.generateSdkDocs();
+    return { docs };
+  }
+
+  @Post('developer/api-key/regenerate')
+  @ApiOperation({ summary: 'Regenerate API key' })
+  async regenerateApiKey(@Request() req: any): Promise<{ apiKey: string }> {
+    const userId = req.user.id;
+    const developer = await this.developerPlatformService.getDeveloperAccount(userId);
+    if (!developer) {
+      throw new Error('Developer account not found');
+    }
+    const apiKey = await this.sdkService.generateApiKey(developer.id);
+    return { apiKey };
+  }
+
+  @Post('apps/:id/validate')
+  @ApiOperation({ summary: 'Validate app code' })
+  async validateApp(@Param('id') id: string): Promise<any> {
+    return this.appExecutionService.validateApp(id);
+  }
+
+  @Post('apps/:id/execute')
+  @ApiOperation({ summary: 'Execute app in sandbox' })
+  async executeApp(
+    @Param('id') id: string,
+    @Body() dto: { input: any; timeout?: number },
+  ): Promise<any> {
+    return this.appExecutionService.executeApp(id, dto.input);
   }
 }
 

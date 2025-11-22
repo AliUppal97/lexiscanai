@@ -4,6 +4,7 @@ import { MarketplaceService } from './marketplace.service';
 import { DeveloperPlatformService } from './developer-platform.service';
 import { AppExecutionService } from './app-execution.service';
 import { RevenueService } from './revenue.service';
+import { DeveloperSdkService } from './developer-sdk.service';
 import { PrismaService } from '../../common/prisma.service';
 import { AuthModule } from '../auth/auth.module';
 
@@ -15,6 +16,7 @@ import { AuthModule } from '../auth/auth.module';
     DeveloperPlatformService,
     AppExecutionService,
     RevenueService,
+    DeveloperSdkService,
     PrismaService,
   ],
   exports: [MarketplaceService, DeveloperPlatformService],
