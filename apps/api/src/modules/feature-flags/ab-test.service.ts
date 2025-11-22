@@ -57,7 +57,13 @@ export class ABTestService {
   /**
    * Track conversion event
    */
-  async trackEvent(userId: string, experimentId: string, event: string): Promise<void> {
+  async trackEvent(
+    userId: string,
+    experimentId: string,
+    event: string,
+    eventValue?: number,
+    metadata?: any,
+  ): Promise<void> {
     const experiment = await this.prisma.aBTest.findUnique({
       where: { id: experimentId },
     });
@@ -66,8 +72,14 @@ export class ABTestService {
       throw new NotFoundException(`Experiment ${experimentId} not found`);
     }
 
-    // TODO: Store event in separate table for analytics
-    this.logger.debug(`Event tracked: ${event} for user ${userId} in experiment ${experimentId}`);
+    // Get user's assigned variant
+    const variant = await this.assignVariant(userId, experimentId);
+
+    // Track event using events service (will be injected)
+    // This is a placeholder - actual implementation will use ABTestEventsService
+    this.logger.debug(
+      `Event tracked: ${event} for user ${userId} in experiment ${experimentId}, variant: ${variant}`,
+    );
   }
 
   /**
