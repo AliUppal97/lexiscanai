@@ -54,27 +54,127 @@ export class AppExecutionService {
    * Execute AI model app
    */
   private async executeAIModel(app: MarketplaceApp, input: any): Promise<any> {
-    // TODO: Execute AI model
     this.logger.debug(`Executing AI model app: ${app.name}`);
-    return { result: 'AI model execution not yet implemented' };
+    
+    const config = app.config as any;
+    const modelId = config.modelId;
+    
+    if (!modelId) {
+      throw new Error(`AI model app ${app.id} missing modelId in config`);
+    }
+
+    // Call AI model inference service
+    // In production, would inject ModelInferenceService
+    const axios = require('axios');
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+    
+    try {
+      const response = await axios.post(
+        `${baseUrl}/api/v1/ai-models/${modelId}/predict`,
+        { input },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        },
+      );
+
+      return {
+        success: true,
+        result: response.data,
+        appId: app.id,
+        appName: app.name,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to execute AI model app ${app.id}: ${error.message}`);
+      throw new Error(`AI model execution failed: ${error.message}`);
+    }
   }
 
   /**
    * Execute integration app
    */
   private async executeIntegration(app: MarketplaceApp, input: any): Promise<any> {
-    // TODO: Execute integration
     this.logger.debug(`Executing integration app: ${app.name}`);
-    return { result: 'Integration execution not yet implemented' };
+    
+    const config = app.config as any;
+    const endpoint = config.endpoint;
+    const method = config.method || 'POST';
+    
+    if (!endpoint) {
+      throw new Error(`Integration app ${app.id} missing endpoint in config`);
+    }
+
+    // Execute integration via HTTP call
+    const axios = require('axios');
+    
+    try {
+      const response = await axios({
+        method,
+        url: endpoint,
+        data: input,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.headers || {}),
+        },
+        timeout: config.timeout || 30000,
+      });
+
+      return {
+        success: true,
+        result: response.data,
+        appId: app.id,
+        appName: app.name,
+        statusCode: response.status,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to execute integration app ${app.id}: ${error.message}`);
+      throw new Error(`Integration execution failed: ${error.message}`);
+    }
   }
 
   /**
    * Execute workflow app
    */
   private async executeWorkflow(app: MarketplaceApp, input: any): Promise<any> {
-    // TODO: Execute workflow
     this.logger.debug(`Executing workflow app: ${app.name}`);
-    return { result: 'Workflow execution not yet implemented' };
+    
+    const config = app.config as any;
+    const workflowId = config.workflowId;
+    
+    if (!workflowId) {
+      throw new Error(`Workflow app ${app.id} missing workflowId in config`);
+    }
+
+    // Execute workflow via workflow service
+    // In production, would inject WorkflowEngineService
+    const axios = require('axios');
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+    
+    try {
+      const response = await axios.post(
+        `${baseUrl}/api/v1/workflows/${workflowId}/execute`,
+        { input },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000, // Workflows may take longer
+        },
+      );
+
+      return {
+        success: true,
+        result: response.data,
+        appId: app.id,
+        appName: app.name,
+        executionId: response.data.id,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to execute workflow app ${app.id}: ${error.message}`);
+      throw new Error(`Workflow execution failed: ${error.message}`);
+    }
   }
 
   /**
@@ -138,12 +238,12 @@ export class AppExecutionService {
   }
 
   /**
-   * Execute code in sandbox
+   * Execute code in sandbox using VM2 for Node.js sandboxing
    */
   private async executeInSandbox(code: string, timeout: number): Promise<any> {
-    // In production, would use Docker container or VM
-    // For now, use VM2 or similar for Node.js sandboxing
-    // This is a placeholder - actual implementation would use proper sandboxing
+    // In production, would use Docker containers or VMs for complete isolation
+    // For Node.js, use VM2 library for sandboxing
+    const { VM } = require('vm2');
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -151,13 +251,40 @@ export class AppExecutionService {
       }, timeout);
 
       try {
-        // In production, would execute in isolated environment
-        // For now, return placeholder
+        // Create isolated VM with restricted access
+        const vm = new VM({
+          timeout: timeout,
+          sandbox: {
+            // Provide safe APIs only
+            console: {
+              log: (...args: any[]) => this.logger.debug(`[Sandbox] ${args.join(' ')}`),
+              error: (...args: any[]) => this.logger.error(`[Sandbox] ${args.join(' ')}`),
+            },
+            // Add safe utility functions
+            Math: Math,
+            Date: Date,
+            JSON: JSON,
+            Array: Array,
+            Object: Object,
+            String: String,
+            Number: Number,
+            Boolean: Boolean,
+          },
+        });
+
+        // Execute code in sandbox
+        const result = vm.run(code);
+
         clearTimeout(timer);
-        resolve({ result: 'Sandbox execution completed', output: 'Placeholder output' });
+        resolve({
+          result: 'Sandbox execution completed',
+          output: result,
+          executedAt: new Date().toISOString(),
+        });
       } catch (error) {
         clearTimeout(timer);
-        reject(error);
+        this.logger.error(`Sandbox execution error: ${error.message}`);
+        reject(new Error(`Sandbox execution failed: ${error.message}`));
       }
     });
   }
