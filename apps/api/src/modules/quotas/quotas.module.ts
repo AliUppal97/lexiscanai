@@ -6,10 +6,14 @@ import { UsageTrackerService } from './usage-tracker.service';
 import { QuotaEnforcementGuard } from './quota-enforcement.guard';
 import { PrismaService } from '../../common/prisma.service';
 import { CacheService } from '../../services/cache.service';
+import { EmailService } from '../../services/email.service';
+import { NotificationService } from '../../services/notification.service';
+import { WebhookService } from '../communications/webhooks/webhook.service';
+import { CommunicationsModule } from '../communications/communications.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CommunicationsModule],
   controllers: [QuotasController],
   providers: [
     QuotasService,
@@ -18,6 +22,8 @@ import { AuthModule } from '../auth/auth.module';
     QuotaEnforcementGuard,
     PrismaService,
     CacheService,
+    EmailService,
+    NotificationService,
   ],
   exports: [
     QuotasService,
