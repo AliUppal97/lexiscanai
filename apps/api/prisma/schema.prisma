@@ -32,6 +32,7 @@ model Tenant {
 
   // Relations
   users                   User[]
+  apiKeys                 ApiKey[]
   roles                   Role[]
   permissions             Permission[]
   userRoles               UserRole[]
@@ -103,6 +104,7 @@ model User {
 
   // Relations
   tenant                  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys                 ApiKey[]
   userRoles               UserRole[]
   sessions                Session[]
   auditLogs               AuditLog[]
@@ -125,6 +127,33 @@ model User {
   @@index([tenantId, isActive])
   @@index([lastLoginAt])
   @@map("users")
+}
+
+// API Key: Server-to-server authentication
+model ApiKey {
+  id          String    @id @default(cuid())
+  tenantId    String
+  userId      String
+  name        String
+  description String?
+  keyHash     String    @unique // SHA-256 hash of the key
+  scopes      String[] // Array of permission strings
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([keyHash])
+  @@index([tenantId, userId])
+  @@index([isActive, revokedAt])
+  @@index([expiresAt])
+  @@map("api_keys")
 }
 
 // ============================================================================
