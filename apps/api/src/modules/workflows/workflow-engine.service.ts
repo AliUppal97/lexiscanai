@@ -153,6 +153,17 @@ export class WorkflowEngineService {
   }
 
   /**
+   * Get workflow executions
+   */
+  async getWorkflowExecutions(workflowId: string): Promise<any[]> {
+    return this.prisma.workflowExecution.findMany({
+      where: { workflowId },
+      orderBy: { startedAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  /**
    * Get workflow by ID
    */
   private async getWorkflow(id: string, tenantId: string): Promise<Workflow> {
