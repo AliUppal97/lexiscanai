@@ -8,6 +8,18 @@ import { UsersModule } from './modules/users/users.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { QuotasModule } from './modules/quotas/quotas.module';
+import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { VersionModule } from './common/versioning/version.module';
+import { GraphQLModule } from './graphql/graphql.module';
+import { CollaborationModule } from './modules/collaboration/collaboration.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { SecurityModule } from './modules/security/security.module';
+import { WhiteLabelingModule } from './modules/white-labeling/white-labeling.module';
+import { CustomerSuccessModule } from './modules/customer-success/customer-success.module';
+import { MarketplaceModule } from './modules/marketplace/marketplace.module';
+import { AIModelsModule } from './modules/ai-models/ai-models.module';
 
 @Module({
   imports: [
@@ -34,6 +46,18 @@ import { BillingModule } from './modules/billing/billing.module';
     DocumentsModule,
     ReviewsModule,
     BillingModule,
+    QuotasModule,
+    FeatureFlagsModule,
+    VersionModule,
+    GraphQLModule,
+    CollaborationModule,
+    AnalyticsModule,
+    WorkflowsModule,
+    SecurityModule,
+    WhiteLabelingModule,
+    CustomerSuccessModule,
+    MarketplaceModule,
+    AIModelsModule,
   ],
 })
 export class AppModule {}
