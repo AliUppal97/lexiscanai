@@ -1,12 +1,19 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { Report, ReportType } from '@prisma/client';
+import { QueryBuilderService } from './query-builder.service';
+import { CacheService } from '../../services/cache.service';
 
 @Injectable()
 export class ReportBuilderService {
   private readonly logger = new Logger(ReportBuilderService.name);
+  private readonly CACHE_TTL = 300; // 5 minutes
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private queryBuilder: QueryBuilderService,
+    private cache: CacheService,
+  ) {}
 
   /**
    * Create custom report
