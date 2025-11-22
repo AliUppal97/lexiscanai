@@ -172,8 +172,49 @@ export class CollaborationService {
    * Get current document state
    */
   private async getDocumentState(documentId: string): Promise<string> {
-    // In production, would fetch actual document content
-    // For now, return empty string as placeholder
+    // Fetch actual document content from database
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      select: {
+        content: true,
+        filePath: true,
+        mimeType: true,
+      },
+    });
+
+    if (!document) {
+      throw new Error(`Document ${documentId} not found`);
+    }
+
+    // If content is directly stored, return it
+    if (document.content) {
+      return document.content;
+    }
+
+    // If filePath exists, read from file storage
+    if (document.filePath) {
+      try {
+        const fs = require('fs').promises;
+        const path = require('path');
+        
+        // In production, would use S3 or cloud storage
+        // For now, read from local filesystem if filePath is local
+        if (document.filePath.startsWith('/') || document.filePath.startsWith('./')) {
+          const content = await fs.readFile(document.filePath, 'utf-8');
+          return content;
+        } else {
+          // Cloud storage path - would use S3 client
+          // For now, return empty and log warning
+          this.logger.warn(`Cloud storage file reading not implemented for ${document.filePath}`);
+          return '';
+        }
+      } catch (error) {
+        this.logger.error(`Failed to read document file: ${error.message}`);
+        return '';
+      }
+    }
+
+    // No content available
     return '';
   }
 
