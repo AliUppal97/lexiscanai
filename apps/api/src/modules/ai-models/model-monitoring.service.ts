@@ -11,7 +11,7 @@ export class ModelMonitoringService {
    * Monitor model performance
    */
   async monitorPerformance(modelId: string): Promise<any> {
-    const recentUsage = await this.prisma.modelUsage.findMany({
+    const recentUsage = await (this.prisma as any).modelUsage.findMany({
       where: {
         modelId,
         timestamp: {
@@ -26,7 +26,7 @@ export class ModelMonitoringService {
       p95Latency: this.calculatePercentile(recentUsage.map((u) => u.latency), 95),
       p99Latency: this.calculatePercentile(recentUsage.map((u) => u.latency), 99),
       totalCost: recentUsage.reduce((sum, u) => sum + u.cost, 0),
-      errorRate: 0, // TODO: Calculate from error logs
+      errorRate: this.calculateErrorRate(recentUsage),
     };
 
     return metrics;
@@ -37,7 +37,7 @@ export class ModelMonitoringService {
    */
   async detectDrift(modelId: string): Promise<{ drifted: boolean; score: number; details: any }> {
     // Get recent input data distribution
-    const recentUsage = await this.prisma.modelUsage.findMany({
+    const recentUsage = await (this.prisma as any).modelUsage.findMany({
       where: {
         modelId,
         timestamp: {
@@ -77,22 +77,148 @@ export class ModelMonitoringService {
    */
   private async getBaselineInputs(modelId: string): Promise<any[]> {
     // Get inputs from training data or historical production data
-    // For now, return empty array as placeholder
-    return [];
+    // Use first 1000 production inputs as baseline (from first week of deployment)
+    const model = await (this.prisma as any).aIModel.findUnique({
+      where: { id: modelId },
+      include: {
+        deployments: {
+          where: {
+            environment: 'PRODUCTION',
+            status: 'ACTIVE',
+          },
+          orderBy: { deployedAt: 'asc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!model || model.deployments.length === 0) {
+      return [];
+    }
+
+    const deployment = model.deployments[0];
+    const baselineStartDate = deployment.deployedAt || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const baselineEndDate = new Date(baselineStartDate.getTime() + 7 * 24 * 60 * 60 * 1000); // First week
+
+    const baselineUsage = await (this.prisma as any).modelUsage.findMany({
+      where: {
+        modelId,
+        timestamp: {
+          gte: baselineStartDate,
+          lte: baselineEndDate,
+        },
+      },
+      take: 1000,
+      select: {
+        input: true,
+      },
+    });
+
+    return baselineUsage.map((u) => u.input as any).filter(Boolean);
   }
 
   /**
-   * Calculate drift score using statistical test
+   * Calculate drift score using statistical test (Kolmogorov-Smirnov test)
    */
   private calculateDriftScore(recent: any[], baseline: any[]): number {
-    // Simplified drift calculation
-    // In production, would use proper statistical tests (KS test, PSI, etc.)
-    if (baseline.length === 0) {
-      return 0; // No baseline to compare
+    if (baseline.length === 0 || recent.length === 0) {
+      return 0; // No baseline or recent data to compare
     }
 
-    // Simple comparison (would use proper statistical test)
-    return 0.15; // Placeholder
+    // Extract numeric features from inputs (simplified - would use proper feature extraction)
+    const recentFeatures = this.extractNumericFeatures(recent);
+    const baselineFeatures = this.extractNumericFeatures(baseline);
+
+    if (recentFeatures.length === 0 || baselineFeatures.length === 0) {
+      return 0;
+    }
+
+    // Calculate Kolmogorov-Smirnov statistic for each feature
+    const ksScores: number[] = [];
+    
+    // Get unique feature keys
+    const featureKeys = new Set([
+      ...Object.keys(recentFeatures[0] || {}),
+      ...Object.keys(baselineFeatures[0] || {}),
+    ]);
+
+    for (const key of featureKeys) {
+      const recentValues = recentFeatures.map((f) => f[key]).filter((v) => typeof v === 'number');
+      const baselineValues = baselineFeatures.map((f) => f[key]).filter((v) => typeof v === 'number');
+
+      if (recentValues.length > 0 && baselineValues.length > 0) {
+        const ks = this.kolmogorovSmirnovTest(recentValues, baselineValues);
+        ksScores.push(ks);
+      }
+    }
+
+    // Return maximum KS score (worst drift)
+    return ksScores.length > 0 ? Math.max(...ksScores) : 0;
+  }
+
+  /**
+   * Extract numeric features from input data
+   */
+  private extractNumericFeatures(inputs: any[]): Array<Record<string, number>> {
+    return inputs.map((input) => {
+      const features: Record<string, number> = {};
+      
+      // Extract numeric values (simplified - would use proper feature engineering)
+      if (typeof input === 'object' && input !== null) {
+        for (const [key, value] of Object.entries(input)) {
+          if (typeof value === 'number') {
+            features[key] = value;
+          } else if (typeof value === 'string' && !isNaN(Number(value))) {
+            features[key] = Number(value);
+          } else if (Array.isArray(value)) {
+            features[`${key}_length`] = value.length;
+          }
+        }
+      }
+      
+      return features;
+    });
+  }
+
+  /**
+   * Kolmogorov-Smirnov test for two samples
+   */
+  private kolmogorovSmirnovTest(sample1: number[], sample2: number[]): number {
+    // Sort samples
+    const sorted1 = [...sample1].sort((a, b) => a - b);
+    const sorted2 = [...sample2].sort((a, b) => a - b);
+
+    // Calculate empirical CDFs
+    const n1 = sorted1.length;
+    const n2 = sorted2.length;
+    const allValues = [...new Set([...sorted1, ...sorted2])].sort((a, b) => a - b);
+
+    let maxDiff = 0;
+
+    for (const value of allValues) {
+      const cdf1 = sorted1.filter((v) => v <= value).length / n1;
+      const cdf2 = sorted2.filter((v) => v <= value).length / n2;
+      const diff = Math.abs(cdf1 - cdf2);
+      maxDiff = Math.max(maxDiff, diff);
+    }
+
+    return maxDiff; // KS statistic (0-1, higher = more drift)
+  }
+
+  /**
+   * Calculate error rate from usage records
+   */
+  private calculateErrorRate(usage: any[]): number {
+    if (usage.length === 0) {
+      return 0;
+    }
+
+    const errorCount = usage.filter((u) => {
+      const output = u.output as any;
+      return output?.error || output?.status === 'error' || output?.success === false;
+    }).length;
+
+    return errorCount / usage.length;
   }
 
   /**

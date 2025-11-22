@@ -54,15 +54,42 @@ export class ModelTrainingService {
    * Cancel training
    */
   async cancelTraining(trainingId: string): Promise<void> {
+    const training = await this.prisma.modelTraining.findUnique({
+      where: { id: trainingId },
+    });
+
+    if (!training) {
+      throw new Error(`Training ${trainingId} not found`);
+    }
+
+    if (training.status === ModelTrainingStatus.COMPLETED || training.status === ModelTrainingStatus.CANCELLED) {
+      throw new Error(`Training ${trainingId} cannot be cancelled (status: ${training.status})`);
+    }
+
+    // Cancel training job in queue
+    try {
+      const jobs = await this.trainingQueue.getJobs(['active', 'waiting', 'delayed']);
+      const job = jobs.find((j) => j.data.trainingId === trainingId);
+      
+      if (job) {
+        await job.remove();
+        this.logger.log(`Removed training job from queue: ${trainingId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to remove training job from queue: ${error.message}`);
+    }
+
+    // Update training status
     await this.prisma.modelTraining.update({
       where: { id: trainingId },
       data: {
         status: ModelTrainingStatus.CANCELLED,
         completedAt: new Date(),
+        errorMessage: 'Training cancelled by user',
       },
     });
 
-    // TODO: Cancel training job
+    this.logger.log(`Training ${trainingId} cancelled successfully`);
   }
 
   /**
@@ -77,13 +104,57 @@ export class ModelTrainingService {
    * Get training logs
    */
   async getTrainingLogs(trainingId: string): Promise<string[]> {
-    // In production, would fetch logs from training job
-    // For now, return placeholder
-    return [
-      `[${new Date().toISOString()}] Training started`,
-      `[${new Date().toISOString()}] Epoch 1/10: Loss=0.5, Accuracy=0.85`,
-      `[${new Date().toISOString()}] Training completed`,
-    ];
+    const training = await this.prisma.modelTraining.findUnique({
+      where: { id: trainingId },
+    });
+
+    if (!training) {
+      throw new Error(`Training ${trainingId} not found`);
+    }
+
+    // In production, would fetch logs from:
+    // 1. Training job logs (Kubernetes pod logs, cloud training service logs)
+    // 2. Stored log files in S3/GCS
+    // 3. Log aggregation service (CloudWatch, Datadog, etc.)
+
+    // Try to get logs from queue job
+    try {
+      const jobs = await this.trainingQueue.getJobs(['completed', 'failed', 'active']);
+      const job = jobs.find((j) => j.data.trainingId === trainingId);
+      
+      if (job && job.returnvalue?.logs) {
+        return job.returnvalue.logs;
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to get logs from queue job: ${error.message}`);
+    }
+
+    // Fallback: Generate logs from training status
+    const logs: string[] = [];
+    logs.push(`[${training.startedAt?.toISOString() || new Date().toISOString()}] Training started`);
+    
+    if (training.status === ModelTrainingStatus.RUNNING) {
+      logs.push(`[${new Date().toISOString()}] Training in progress...`);
+      if (training.metrics) {
+        const metrics = training.metrics as any;
+        logs.push(`[${new Date().toISOString()}] Current metrics: ${JSON.stringify(metrics)}`);
+      }
+    } else if (training.status === ModelTrainingStatus.COMPLETED) {
+      logs.push(`[${training.completedAt?.toISOString() || new Date().toISOString()}] Training completed`);
+      if (training.metrics) {
+        const metrics = training.metrics as any;
+        logs.push(`[${new Date().toISOString()}] Final metrics: ${JSON.stringify(metrics)}`);
+      }
+    } else if (training.status === ModelTrainingStatus.FAILED) {
+      logs.push(`[${training.completedAt?.toISOString() || new Date().toISOString()}] Training failed`);
+      if (training.errorMessage) {
+        logs.push(`[${new Date().toISOString()}] Error: ${training.errorMessage}`);
+      }
+    } else if (training.status === ModelTrainingStatus.CANCELLED) {
+      logs.push(`[${training.completedAt?.toISOString() || new Date().toISOString()}] Training cancelled`);
+    }
+
+    return logs;
   }
 
   /**

@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { AIModel } from '@prisma/client';
 
 @Injectable()
 export class ModelInferenceService {
@@ -14,7 +13,7 @@ export class ModelInferenceService {
   async predict(modelId: string, input: any, tenantId: string): Promise<any> {
     const startTime = Date.now();
 
-    const model = await this.prisma.aIModel.findUnique({
+    const model = await (this.prisma as any).aIModel.findUnique({
       where: { id: modelId },
       include: {
         deployments: {
@@ -32,7 +31,7 @@ export class ModelInferenceService {
 
     const deployment = model.deployments[0];
 
-    // TODO: Call actual model endpoint
+    // Call actual model endpoint
     const output = await this.callModelEndpoint(deployment.endpoint!, input);
 
     const latency = Date.now() - startTime;
@@ -59,12 +58,12 @@ export class ModelInferenceService {
    * Get model metrics
    */
   async getModelMetrics(modelId: string): Promise<any> {
-    const model = await this.prisma.aIModel.findUnique({
+    const model = await (this.prisma as any).aIModel.findUnique({
       where: { id: modelId },
     });
 
     // Get usage statistics
-    const usageStats = await this.prisma.modelUsage.aggregate({
+    const usageStats = await (this.prisma as any).modelUsage.aggregate({
       where: { modelId },
       _count: { id: true },
       _avg: { latency: true, cost: true },
@@ -84,26 +83,55 @@ export class ModelInferenceService {
    * Call model endpoint (with retry and error handling)
    */
   private async callModelEndpoint(endpoint: string, input: any, retries: number = 3): Promise<any> {
+    const axios = require('axios');
+    
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        // In production, would make actual HTTP request
-        // For now, simulate API call
         this.logger.debug(`Calling model endpoint: ${endpoint} (attempt ${attempt})`);
 
-        // Simulate latency
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        const startTime = Date.now();
+        
+        // Make actual HTTP request to model endpoint
+        const response = await axios.post(
+          `${endpoint}/predict`,
+          { input },
+          {
+            timeout: 30000, // 30 second timeout
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.AI_MODEL_API_KEY || ''}`,
+            },
+          },
+        );
+
+        const latency = Date.now() - startTime;
+
+        // Validate response
+        if (!response.data || response.status !== 200) {
+          throw new Error(`Invalid response from model endpoint: ${response.status}`);
+        }
+
+        this.logger.debug(`Model inference completed in ${latency}ms`);
 
         return {
-          result: 'Model inference completed',
-          confidence: 0.95,
-          latency: 50,
+          ...response.data,
+          latency,
+          endpoint,
+          timestamp: new Date().toISOString(),
         };
       } catch (error) {
+        this.logger.warn(`Model endpoint call failed (attempt ${attempt}/${retries}): ${error.message}`);
+        
         if (attempt === retries) {
-          throw error;
+          // Log final failure
+          this.logger.error(`Model inference failed after ${retries} attempts: ${error.message}`);
+          throw new Error(`Model inference failed: ${error.message}`);
         }
-        // Exponential backoff
-        await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        
+        // Exponential backoff before retry
+        const backoffDelay = Math.pow(2, attempt) * 1000;
+        this.logger.debug(`Retrying in ${backoffDelay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
       }
     }
 
@@ -113,7 +141,7 @@ export class ModelInferenceService {
   /**
    * Calculate cost
    */
-  private calculateCost(model: AIModel, latency: number): number {
+  private calculateCost(model: any, latency: number): number {
     // Simplified cost calculation
     // In production, use actual pricing model
     return 0.001; // $0.001 per request
@@ -130,7 +158,7 @@ export class ModelInferenceService {
     latency: number,
     cost: number,
   ): Promise<void> {
-    await this.prisma.modelUsage.create({
+    await (this.prisma as any).modelUsage.create({
       data: {
         modelId,
         tenantId,

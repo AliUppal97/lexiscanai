@@ -5,6 +5,7 @@ import { ModelTrainingService } from './model-training.service';
 import { ModelDeploymentService } from './model-deployment.service';
 import { ModelInferenceService } from './model-inference.service';
 import { ModelMonitoringService } from './model-monitoring.service';
+import { PrismaService } from '../../common/prisma.service';
 
 @ApiTags('AI Models')
 @ApiBearerAuth()
@@ -16,27 +17,123 @@ export class AIModelsController {
     private deploymentService: ModelDeploymentService,
     private inferenceService: ModelInferenceService,
     private monitoringService: ModelMonitoringService,
+    private prisma: PrismaService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List AI models' })
-  async listModels(): Promise<any[]> {
-    // TODO: Implement list
-    return [];
+  async listModels(@Request() req: any): Promise<any[]> {
+    const tenantId = req.user?.tenantId;
+    
+    // In production, would filter by tenantId if models are tenant-specific
+    // For now, return all models (would add tenantId to AIModel model if needed)
+    const models = await (this.prisma as any).aIModel.findMany({
+      include: {
+        deployments: {
+          where: {
+            status: 'ACTIVE',
+          },
+        },
+        trainings: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      description: model.description,
+      type: model.type,
+      version: model.version,
+      status: model.status,
+      metrics: model.metrics,
+      createdAt: model.createdAt,
+      updatedAt: model.updatedAt,
+      deployments: model.deployments.map((d) => ({
+        id: d.id,
+        environment: d.environment,
+        status: d.status,
+        endpoint: d.endpoint,
+        trafficPercentage: d.trafficPercentage,
+      })),
+      latestTraining: model.trainings[0] ? {
+        id: model.trainings[0].id,
+        status: model.trainings[0].status,
+        metrics: model.trainings[0].metrics,
+      } : null,
+    }));
   }
 
   @Post()
   @ApiOperation({ summary: 'Create AI model' })
-  async createModel(@Body() dto: any): Promise<any> {
-    // TODO: Implement create
-    return {};
+  async createModel(@Request() req: any, @Body() dto: {
+    name: string;
+    description?: string;
+    type: string;
+    config: any;
+  }): Promise<any> {
+    const model = await (this.prisma as any).aIModel.create({
+      data: {
+        name: dto.name,
+        description: dto.description,
+        type: dto.type as any,
+        config: dto.config,
+        status: 'DRAFT',
+        version: '1.0.0',
+      },
+    });
+
+    return {
+      id: model.id,
+      name: model.name,
+      description: model.description,
+      type: model.type,
+      version: model.version,
+      status: model.status,
+      createdAt: model.createdAt,
+    };
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get AI model' })
   async getModel(@Param('id') id: string): Promise<any> {
-    // TODO: Implement get
-    return {};
+    const model = await (this.prisma as any).aIModel.findUnique({
+      where: { id },
+      include: {
+        deployments: true,
+        trainings: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+        versions: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
+    });
+
+    if (!model) {
+      throw new Error(`Model ${id} not found`);
+    }
+
+    return {
+      id: model.id,
+      name: model.name,
+      description: model.description,
+      type: model.type,
+      version: model.version,
+      status: model.status,
+      config: model.config,
+      metrics: model.metrics,
+      deployments: model.deployments,
+      trainings: model.trainings,
+      versions: model.versions,
+      createdAt: model.createdAt,
+      updatedAt: model.updatedAt,
+    };
   }
 
   @Post(':id/train')
