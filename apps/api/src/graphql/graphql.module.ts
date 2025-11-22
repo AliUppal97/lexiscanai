@@ -3,8 +3,10 @@ import { GraphQLModule as NestGraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
 import { DocumentResolver } from './resolvers/document.resolver';
+import { UserResolver, OrganizationResolver } from './resolvers/user.resolver';
 import { DocumentsModule } from '../modules/documents/documents.module';
 import { DocumentDataLoader } from './dataloaders/document.dataloader';
+import { UserDataLoader } from './dataloaders/user.dataloader';
 import { PrismaService } from '../common/prisma.service';
 import { AuthModule } from '../modules/auth/auth.module';
 
@@ -26,8 +28,15 @@ import { AuthModule } from '../modules/auth/auth.module';
     DocumentsModule,
     AuthModule,
   ],
-  providers: [DocumentResolver, DocumentDataLoader, PrismaService],
-  exports: [DocumentDataLoader],
+  providers: [
+    DocumentResolver,
+    UserResolver,
+    OrganizationResolver,
+    DocumentDataLoader,
+    UserDataLoader,
+    PrismaService,
+  ],
+  exports: [DocumentDataLoader, UserDataLoader],
 })
 export class GraphQLModule {}
 
