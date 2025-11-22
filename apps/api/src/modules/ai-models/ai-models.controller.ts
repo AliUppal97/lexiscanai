@@ -71,5 +71,41 @@ export class AIModelsController {
   async getMetrics(@Param('id') id: string): Promise<any> {
     return this.inferenceService.getModelMetrics(id);
   }
+
+  @Get(':id/training/:trainingId/logs')
+  @ApiOperation({ summary: 'Get training logs' })
+  async getTrainingLogs(@Param('id') id: string, @Param('trainingId') trainingId: string): Promise<any> {
+    return this.trainingService.getTrainingLogs(trainingId);
+  }
+
+  @Get(':id/training/:trainingId/monitor')
+  @ApiOperation({ summary: 'Monitor training job' })
+  async monitorTraining(@Param('id') id: string, @Param('trainingId') trainingId: string): Promise<any> {
+    return this.trainingService.monitorTrainingJob(trainingId);
+  }
+
+  @Get(':id/deployment/health')
+  @ApiOperation({ summary: 'Health check for deployment' })
+  async healthCheck(@Param('id') id: string): Promise<any> {
+    return this.deploymentService.healthCheck(id);
+  }
+
+  @Get(':id/deployment/metrics')
+  @ApiOperation({ summary: 'Get deployment metrics' })
+  async getDeploymentMetrics(@Param('id') id: string): Promise<any> {
+    return this.deploymentService.getDeploymentMetrics(id);
+  }
+
+  @Get(':id/monitoring/drift')
+  @ApiOperation({ summary: 'Detect data drift' })
+  async detectDrift(@Param('id') id: string): Promise<any> {
+    return this.monitoringService.detectDrift(id);
+  }
+
+  @Get(':id/monitoring/anomalies')
+  @ApiOperation({ summary: 'Detect model anomalies' })
+  async detectAnomalies(@Param('id') id: string): Promise<any> {
+    return this.monitoringService.detectAnomalies(id);
+  }
 }
 

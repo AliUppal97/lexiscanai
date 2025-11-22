@@ -113,5 +113,83 @@ export class ModelDeploymentService {
     const baseUrl = process.env.AI_MODEL_BASE_URL || 'https://ai-models.example.com';
     return `${baseUrl}/${environment.toLowerCase()}/models/${modelId}`;
   }
+
+  /**
+   * Health check for deployment
+   */
+  async healthCheck(modelId: string): Promise<{
+    healthy: boolean;
+    latency: number;
+    errorRate: number;
+    uptime: number;
+  }> {
+    const deployment = await this.prisma.modelDeployment.findFirst({
+      where: {
+        modelId,
+        environment: ModelDeploymentEnvironment.PRODUCTION,
+        status: ModelDeploymentStatus.ACTIVE,
+      },
+    });
+
+    if (!deployment || !deployment.endpoint) {
+      return {
+        healthy: false,
+        latency: 0,
+        errorRate: 1.0,
+        uptime: 0,
+      };
+    }
+
+    // In production, would make actual health check request
+    // For now, return mock data
+    return {
+      healthy: true,
+      latency: 50, // ms
+      errorRate: 0.01, // 1%
+      uptime: 99.9, // %
+    };
+  }
+
+  /**
+   * Get deployment metrics
+   */
+  async getDeploymentMetrics(modelId: string): Promise<any> {
+    const deployment = await this.prisma.modelDeployment.findFirst({
+      where: {
+        modelId,
+        environment: ModelDeploymentEnvironment.PRODUCTION,
+      },
+    });
+
+    if (!deployment) {
+      return {};
+    }
+
+    // Get usage statistics
+    const usage = await this.prisma.modelUsage.findMany({
+      where: {
+        modelId,
+        timestamp: {
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+        },
+      },
+    });
+
+    const totalRequests = usage.length;
+    const averageLatency = usage.length > 0
+      ? usage.reduce((sum, u) => sum + u.latency, 0) / usage.length
+      : 0;
+    const totalCost = usage.reduce((sum, u) => sum + u.cost, 0);
+
+    return {
+      deployment,
+      metrics: {
+        totalRequests,
+        averageLatency,
+        totalCost,
+        trafficPercentage: deployment.trafficPercentage,
+      },
+    };
+  }
 }
 
