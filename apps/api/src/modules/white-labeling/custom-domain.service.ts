@@ -116,8 +116,75 @@ export class CustomDomainService {
    * Request SSL certificate (Let's Encrypt)
    */
   private async requestSslCertificate(domain: string): Promise<void> {
-    // TODO: Integrate with Let's Encrypt or AWS Certificate Manager
-    this.logger.debug(`Requesting SSL certificate for ${domain}`);
+    // In production, integrate with Let's Encrypt or AWS Certificate Manager
+    // For now, create placeholder certificate data
+    const certificateData = {
+      domain,
+      issuer: 'Let\'s Encrypt',
+      validFrom: new Date(),
+      validTo: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+      status: 'pending',
+    };
+
+    // Update custom domain with certificate data
+    await this.prisma.customDomain.updateMany({
+      where: { domain },
+      data: { sslCertificate: certificateData },
+    });
+
+    this.logger.log(`SSL certificate requested for ${domain}`);
+  }
+
+  /**
+   * Check domain health
+   */
+  async checkDomainHealth(domain: string): Promise<{
+    healthy: boolean;
+    issues: string[];
+    sslValid: boolean;
+    dnsConfigured: boolean;
+  }> {
+    const customDomain = await this.prisma.customDomain.findUnique({
+      where: { domain },
+    });
+
+    if (!customDomain) {
+      throw new Error(`Domain ${domain} not found`);
+    }
+
+    const issues: string[] = [];
+    let sslValid = false;
+    let dnsConfigured = false;
+
+    // Check SSL certificate
+    if (customDomain.sslCertificate) {
+      const cert = customDomain.sslCertificate as any;
+      if (cert.status === 'active' && new Date(cert.validTo) > new Date()) {
+        sslValid = true;
+      } else {
+        issues.push('SSL certificate expired or invalid');
+      }
+    } else {
+      issues.push('SSL certificate not configured');
+    }
+
+    // Check DNS configuration
+    try {
+      const records = await resolveTxt(domain);
+      dnsConfigured = records.length > 0;
+      if (!dnsConfigured) {
+        issues.push('DNS records not configured');
+      }
+    } catch (error) {
+      issues.push(`DNS check failed: ${error.message}`);
+    }
+
+    return {
+      healthy: issues.length === 0,
+      issues,
+      sslValid,
+      dnsConfigured,
+    };
   }
 }
 

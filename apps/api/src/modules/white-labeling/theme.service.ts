@@ -45,17 +45,70 @@ export class ThemeService {
       where: { tenantId },
     });
 
+    const themeConfig = theme.config as any;
+
     if (branding) {
       await this.prisma.brandingConfig.update({
         where: { tenantId },
         data: {
-          primaryColor: (theme.config as any).primaryColor,
-          secondaryColor: (theme.config as any).secondaryColor,
-          accentColor: (theme.config as any).accentColor,
-          fontFamily: (theme.config as any).fontFamily,
+          primaryColor: themeConfig.primaryColor || branding.primaryColor,
+          secondaryColor: themeConfig.secondaryColor || branding.secondaryColor,
+          accentColor: themeConfig.accentColor || branding.accentColor,
+          fontFamily: themeConfig.fontFamily || branding.fontFamily,
+          customCss: themeConfig.customCss || branding.customCss,
+        },
+      });
+    } else {
+      // Create branding config if it doesn't exist
+      await this.prisma.brandingConfig.create({
+        data: {
+          tenantId,
+          primaryColor: themeConfig.primaryColor,
+          secondaryColor: themeConfig.secondaryColor,
+          accentColor: themeConfig.accentColor,
+          fontFamily: themeConfig.fontFamily,
+          customCss: themeConfig.customCss,
         },
       });
     }
+  }
+
+  /**
+   * Generate theme preview
+   */
+  async generateThemePreview(themeId: string): Promise<string> {
+    const theme = await this.prisma.theme.findUnique({
+      where: { id: themeId },
+    });
+
+    if (!theme) {
+      throw new Error(`Theme ${themeId} not found`);
+    }
+
+    const config = theme.config as any;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            :root {
+              --primary-color: ${config.primaryColor || '#000000'};
+              --secondary-color: ${config.secondaryColor || '#666666'};
+              --accent-color: ${config.accentColor || '#0066cc'};
+            }
+            body {
+              font-family: ${config.fontFamily || 'Arial, sans-serif'};
+            }
+            ${config.customCss || ''}
+          </style>
+        </head>
+        <body>
+          <h1 style="color: var(--primary-color);">Theme Preview</h1>
+          <p style="color: var(--secondary-color);">${theme.description || ''}</p>
+        </body>
+      </html>
+    `;
   }
 
   /**

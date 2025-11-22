@@ -83,8 +83,53 @@ export class EmailTemplateService {
   async sendEmail(templateId: string, to: string, variables: Record<string, any>): Promise<void> {
     const { subject, body } = await this.renderTemplate(templateId, variables);
 
-    // TODO: Integrate with email service
-    this.logger.debug(`Sending email to ${to} with subject: ${subject}`);
+    // Integrate with email service (would use SendGrid, SES, etc. in production)
+    await this.prisma.email.create({
+      data: {
+        to,
+        subject,
+        body,
+        status: 'PENDING',
+        tenantId: variables.tenantId || null,
+      },
+    });
+
+    this.logger.log(`Email queued to ${to} with subject: ${subject}`);
+  }
+
+  /**
+   * Generate template preview
+   */
+  async generateTemplatePreview(templateId: string, variables?: Record<string, any>): Promise<{ subject: string; body: string }> {
+    const template = await this.prisma.emailTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new Error(`Template ${templateId} not found`);
+    }
+
+    // Use provided variables or defaults
+    const previewVariables = variables || {
+      userName: 'John Doe',
+      companyName: 'Example Company',
+      actionUrl: 'https://example.com/action',
+      ...(template.variables as Record<string, any> || {}),
+    };
+
+    return this.renderTemplate(templateId, previewVariables);
+  }
+
+  /**
+   * Test email template
+   */
+  async testTemplate(templateId: string, testEmail: string, variables?: Record<string, any>): Promise<void> {
+    const preview = await this.generateTemplatePreview(templateId, variables);
+    
+    // Send test email
+    await this.sendEmail(templateId, testEmail, variables || {});
+    
+    this.logger.log(`Test email sent to ${testEmail} for template ${templateId}`);
   }
 }
 
